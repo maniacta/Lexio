@@ -1,4 +1,6 @@
-```
+# Lexio
+
+```plain
 Lexio/
 ├── pyproject.toml # uv / 项目依赖配置
 ├── uv.lock # 锁定依赖
