@@ -1,43 +1,43 @@
 # Lexio
 
-Desktop application built with Tauri v2, React, and Axum.
+基于 Tauri v2 + React + Axum 的桌面应用。
 
-## Prerequisites
+## 环境要求
 
-- [Rust](https://www.rust-lang.org/tools/install) (stable, MSVC toolchain)
+- [Rust](https://www.rust-lang.org/tools/install)（stable，MSVC 工具链）
 - [Node.js](https://nodejs.org/) >= 18
-- **Windows**: [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with "Desktop development with C++" workload
+- **Windows**：需安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)，勾选「使用 C++ 的桌面开发」工作负载
 
-## Install
+## 安装
 
 ```bash
-# Install frontend dependencies
+# 安装前端依赖
 npm install
 ```
 
-## Development
+## 开发
 
 ```bash
-# Start full desktop app (Tauri + React dev server + Axum backend)
+# 启动完整桌面应用（Tauri + React 开发服务器 + Axum 后端）
 npm run tauri dev
 ```
 
-- Frontend dev server: `http://localhost:1420`
-- Axum API: `http://127.0.0.1:3001`
-- Health check: `http://127.0.0.1:3001/api/health`
+- 前端开发服务器：`http://localhost:1420`
+- Axum API：`http://127.0.0.1:3001`
+- 健康检查：`http://127.0.0.1:3001/api/health`
 
-## Build
+## 构建
 
 ```bash
-# Build for production
+# 生产构建
 npm run tauri build
 ```
 
-## Tech Stack
+## 技术栈
 
-| Layer | Technology |
-|-------|-----------|
-| Desktop | Tauri v2 |
-| Backend | Axum 0.8 + Tokio |
-| Frontend | React 19 + TypeScript + Vite 7 |
-| Package Manager | npm |
+| 层级 | 技术 |
+|------|------|
+| 桌面框架 | Tauri v2 |
+| 后端 | Axum 0.8 + Tokio |
+| 前端 | React 19 + TypeScript + Vite 7 |
+| 包管理 | npm |
