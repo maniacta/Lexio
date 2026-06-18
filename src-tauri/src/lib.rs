@@ -31,7 +31,7 @@ pub fn run() {
                 let actual_port = listener.local_addr().unwrap().port();
 
                 app_handle.manage(ApiState { port: actual_port });
-                eprintln!("Axum API server running on http://127.0.0.1:{}", actual_port);
+                eprintln!("Lexio backend running on http://127.0.0.1:{actual_port}");
 
                 axum::serve(listener, server::app()).await.unwrap();
             });
