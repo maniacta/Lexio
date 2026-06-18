@@ -18,18 +18,19 @@ npm install
 ## 开发
 
 ```bash
-# 启动完整桌面应用（Tauri + React 开发服务器 + Axum 后端）
+# 一键启动（Tauri + React + Axum）
 npm run tauri dev
 ```
 
-- 前端开发服务器：`http://localhost:1420`
-- Axum API：`http://127.0.0.1:3001`
-- 健康检查：`http://127.0.0.1:3001/api/health`
+| 服务 | 地址 |
+|------|------|
+| 前端 (Vite) | `http://localhost:14200` |
+| 后端 (Axum) | `http://127.0.0.1:3001` |
+| 健康检查 | `http://127.0.0.1:3001/api/health` |
 
 ## 构建
 
 ```bash
-# 生产构建
 npm run tauri build
 ```
 
