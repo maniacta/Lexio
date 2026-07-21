@@ -1,6 +1,7 @@
 import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult } from "../types";
 
-const API_BASE = "http://127.0.0.1:3001/api";
+// Vite proxy forwards /api/* to backend on localhost:3001
+const API_BASE = "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
