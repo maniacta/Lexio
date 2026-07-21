@@ -1,10 +1,10 @@
-mod api;
-mod models;
-mod server;
-mod db;
-mod repo;
-mod learning;
-mod ai;
+pub mod api;
+pub mod models;
+pub mod server;
+pub mod db;
+pub mod repo;
+pub mod learning;
+pub mod ai;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
