@@ -123,3 +123,24 @@
   color: var(--color-accent, #7c6ff7);
   background: rgba(124, 111, 247, 0.12);
 }
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 10px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary, #888);
+}
+
+.sidebar-tab.active {
+  color: var(--accent-color, #2563eb);
+  border-bottom-color: var(--accent-color, #2563eb);
+}

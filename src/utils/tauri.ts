@@ -11,3 +11,10 @@ export type RunMode = "desktop" | "web";
 export function getRunMode(): RunMode {
   return isTauri() ? "desktop" : "web";
 }
+
+/**
+ * React hook: returns the platform display label ("Desktop" or "Web").
+ */
+export function usePlatform(): string {
+  return isTauri() ? "Desktop" : "Web";
+}

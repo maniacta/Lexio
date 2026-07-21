@@ -1,48 +1,40 @@
-import { getRunMode } from "../utils/tauri";
+import { useState } from "react";
+import SourceList from "./Sidebar/SourceList";
+import KpList from "./Sidebar/KpList";
+import { usePlatform, getRunMode } from "../utils/tauri";
 import "./Sidebar.css";
 
-type NavItem = {
-  id: string;
-  label: string;
-  icon: string;
-  active: boolean;
-};
+interface Props {
+  onSelectKp: (id: string) => void;
+  selectedKpId?: string;
+}
 
-const navItems: NavItem[] = [
-  { id: "home", label: "Home", icon: "\u{1F3E0}", active: true },
-  { id: "library", label: "Library", icon: "\u{1F4DA}", active: false },
-  { id: "settings", label: "Settings", icon: "\u2699\uFE0F", active: false },
-];
-
-export default function Sidebar() {
+export default function Sidebar({ onSelectKp, selectedKpId }: Props) {
+  const platform = usePlatform();
   const runMode = getRunMode();
+  const [tab, setTab] = useState<"sources" | "knowledge">("knowledge");
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <span className="sidebar-logo">{"\u{1F4D6}"}</span>
-        <h1 className="sidebar-title">Lexio</h1>
+      <div className="sidebar-tabs">
+        <button
+          className={`sidebar-tab ${tab === "knowledge" ? "active" : ""}`}
+          onClick={() => setTab("knowledge")}
+        >
+          知识点
+        </button>
+        <button
+          className={`sidebar-tab ${tab === "sources" ? "active" : ""}`}
+          onClick={() => setTab("sources")}
+        >
+          资料
+        </button>
       </div>
-
-      <nav className="sidebar-nav">
-        <ul className="sidebar-nav-list">
-          {navItems.map((item) => (
-            <li key={item.id}>
-              <button
-                className={`sidebar-nav-item${item.active ? " active" : ""}`}
-                type="button"
-              >
-                <span className="sidebar-nav-icon">{item.icon}</span>
-                <span className="sidebar-nav-label">{item.label}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
+      {tab === "knowledge" && <KpList onSelect={onSelectKp} selectedId={selectedKpId} />}
+      {tab === "sources" && <SourceList />}
       <div className="sidebar-footer">
         <span className={`sidebar-mode-badge ${runMode}`}>
-          {runMode === "desktop" ? "Desktop" : "Web"}
+          {platform}
         </span>
         <span className="sidebar-version">v0.1.0</span>
       </div>
