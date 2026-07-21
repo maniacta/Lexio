@@ -1,4 +1,5 @@
 use axum::{routing::get, Router};
+use http::{Method, header};
 use tower_http::cors::CorsLayer;
 use crate::api::{sources, knowledge, quiz, learning, ai_routes};
 
@@ -23,8 +24,19 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
         .route("/api/ai/research", axum::routing::post(ai_routes::start_research))
         .route("/api/ai/generate-quiz", axum::routing::post(ai_routes::generate_quiz))
         .route("/api/ai/update-mastery", axum::routing::post(ai_routes::update_mastery))
-        .layer(CorsLayer::permissive())
+        .layer(cors())
         .with_state(state)
+}
+
+fn cors() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin([
+            "http://localhost:14200".parse::<axum::http::HeaderValue>().unwrap(),
+            "tauri://localhost".parse::<axum::http::HeaderValue>().unwrap(),
+            "https://tauri.localhost".parse::<axum::http::HeaderValue>().unwrap(),
+        ])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_headers([header::CONTENT_TYPE])
 }
 
 async fn health_check() -> &'static str {

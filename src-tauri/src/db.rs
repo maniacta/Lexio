@@ -83,7 +83,31 @@ impl Database {
             );
 
             CREATE VIRTUAL TABLE IF NOT EXISTS kp_fts USING fts5(title, summary, content, content='knowledge_points', content_rowid='rowid');
-            CREATE VIRTUAL TABLE IF NOT EXISTS sources_fts USING fts5(title, content, content='sources', content_rowid='rowid');"
+            CREATE VIRTUAL TABLE IF NOT EXISTS sources_fts USING fts5(title, content, content='sources', content_rowid='rowid');
+
+            -- FTS5 sync triggers for knowledge_points
+            CREATE TRIGGER IF NOT EXISTS kp_fts_ai AFTER INSERT ON knowledge_points BEGIN
+                INSERT INTO kp_fts(rowid, title, summary, content) VALUES (new.rowid, new.title, new.summary, new.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS kp_fts_ad AFTER DELETE ON knowledge_points BEGIN
+                INSERT INTO kp_fts(kp_fts, rowid, title, summary, content) VALUES('delete', old.rowid, old.title, old.summary, old.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS kp_fts_au AFTER UPDATE ON knowledge_points BEGIN
+                INSERT INTO kp_fts(kp_fts, rowid, title, summary, content) VALUES('delete', old.rowid, old.title, old.summary, old.content);
+                INSERT INTO kp_fts(rowid, title, summary, content) VALUES (new.rowid, new.title, new.summary, new.content);
+            END;
+
+            -- FTS5 sync triggers for sources
+            CREATE TRIGGER IF NOT EXISTS sources_fts_ai AFTER INSERT ON sources BEGIN
+                INSERT INTO sources_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS sources_fts_ad AFTER DELETE ON sources BEGIN
+                INSERT INTO sources_fts(sources_fts, rowid, title, content) VALUES('delete', old.rowid, old.title, old.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS sources_fts_au AFTER UPDATE ON sources BEGIN
+                INSERT INTO sources_fts(sources_fts, rowid, title, content) VALUES('delete', old.rowid, old.title, old.content);
+                INSERT INTO sources_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
+            END;"
         )?;
         Ok(())
     }

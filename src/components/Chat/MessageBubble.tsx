@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
 import type { ChatMessage } from "../../types";
 import "./MessageBubble.css";
 
@@ -16,7 +17,7 @@ export default function MessageBubble({ message }: Props) {
         {isUser ? (
           <p>{message.content}</p>
         ) : (
-          <ReactMarkdown>{message.content}</ReactMarkdown>
+          <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{message.content}</ReactMarkdown>
         )}
       </div>
     </div>

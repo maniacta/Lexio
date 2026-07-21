@@ -25,6 +25,7 @@ serde_json = "1"
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors"] }
+http = "1"
 rusqlite = { version = "0.30", features = ["bundled"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -32,4 +33,5 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 tokio-stream = "0.1"
 thiserror = "1"
 futures-util = "0.3"
+
 

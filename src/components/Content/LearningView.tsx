@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
 import { api } from "../../api/client";
 import type { KnowledgePoint } from "../../types";
 import { useQuiz } from "../../hooks/useQuiz";
@@ -41,7 +42,7 @@ export default function LearningView({ kpId }: Props) {
       </div>
 
       <div className="learning-content">
-        <ReactMarkdown>{kp.content}</ReactMarkdown>
+        <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{kp.content}</ReactMarkdown>
       </div>
 
       <div className="learning-actions">
