@@ -1,3 +1,4 @@
+mod api;
 mod models;
 mod server;
 mod db;
@@ -38,6 +39,7 @@ pub fn run() {
 
             let db = Database::new(db_path.to_str().unwrap()).expect("Failed to open database");
             db.migrate().expect("Failed to run migrations");
+            let db: &'static db::Database = Box::leak(Box::new(db));
             app_handle.manage(db);
 
             tauri::async_runtime::spawn(async move {
@@ -48,7 +50,7 @@ pub fn run() {
                 app_handle.manage(ApiState { port: actual_port });
                 eprintln!("Lexio backend running on http://127.0.0.1:{actual_port}");
 
-                axum::serve(listener, server::app()).await.unwrap();
+                axum::serve(listener, server::app(db)).await.unwrap();
             });
 
             Ok(())
