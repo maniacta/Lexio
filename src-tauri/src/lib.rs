@@ -2,6 +2,7 @@ mod models;
 mod server;
 mod db;
 mod repo;
+mod learning;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
