@@ -42,6 +42,19 @@ pub fn run() {
             let db: &'static db::Database = Box::leak(Box::new(db));
             app_handle.manage(db);
 
+            // Initialize LLM client from environment variables
+            let llm_config = ai::llm::LlmConfig {
+                base_url: std::env::var("LLM_BASE_URL")
+                    .unwrap_or_else(|_| "https://api.openai.com/v1".into()),
+                api_key: std::env::var("LLM_API_KEY").unwrap_or_default(),
+                model: std::env::var("LLM_MODEL")
+                    .unwrap_or_else(|_| "gpt-4o-mini".into()),
+            };
+            let llm = ai::llm::LlmClient::new(llm_config);
+
+            let app_state: &'static api::ai_routes::AppState =
+                Box::leak(Box::new(api::ai_routes::AppState { db, llm }));
+
             tauri::async_runtime::spawn(async move {
                 let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
                 let listener = TcpListener::bind(addr).await.unwrap();
@@ -50,7 +63,7 @@ pub fn run() {
                 app_handle.manage(ApiState { port: actual_port });
                 eprintln!("Lexio backend running on http://127.0.0.1:{actual_port}");
 
-                axum::serve(listener, server::app(db)).await.unwrap();
+                axum::serve(listener, server::app(app_state)).await.unwrap();
             });
 
             Ok(())

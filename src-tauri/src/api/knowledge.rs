@@ -1,6 +1,6 @@
 use axum::{extract::{Path, Query, State}, http::StatusCode, Json};
 use serde::Deserialize;
-use crate::db::Database;
+use crate::api::ai_routes::AppState;
 use crate::models::CreateKnowledgePointRequest;
 use crate::repo;
 
@@ -11,44 +11,44 @@ pub struct ListKpsQuery {
 }
 
 pub async fn create_kp(
-    State(db): State<&'static Database>,
+    State(state): State<&'static AppState>,
     Json(req): Json<CreateKnowledgePointRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
-    let kp = repo::knowledge::create_kp(db, &req)
+    let kp = repo::knowledge::create_kp(state.db, &req)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok((StatusCode::CREATED, Json(serde_json::to_value(&kp).unwrap())))
 }
 
 pub async fn list_kps(
-    State(db): State<&'static Database>,
+    State(state): State<&'static AppState>,
     Query(params): Query<ListKpsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let kps = if let Some(ref query) = params.search {
-        repo::knowledge::search_kps(db, query)
+        repo::knowledge::search_kps(state.db, query)
     } else if let Some(ref ids_str) = params.ids {
         let ids: Vec<String> = ids_str.split(',').map(|s| s.trim().to_string()).collect();
-        repo::knowledge::list_kps_by_ids(db, &ids)
+        repo::knowledge::list_kps_by_ids(state.db, &ids)
     } else {
-        repo::knowledge::list_kps(db)
+        repo::knowledge::list_kps(state.db)
     }.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(serde_json::to_value(&kps).unwrap()))
 }
 
 pub async fn get_kp(
-    State(db): State<&'static Database>,
+    State(state): State<&'static AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let kp = repo::knowledge::get_kp(db, &id)
+    let kp = repo::knowledge::get_kp(state.db, &id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or((StatusCode::NOT_FOUND, "Knowledge point not found".to_string()))?;
     Ok(Json(serde_json::to_value(&kp).unwrap()))
 }
 
 pub async fn delete_kp(
-    State(db): State<&'static Database>,
+    State(state): State<&'static AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    repo::knowledge::delete_kp(db, &id)
+    repo::knowledge::delete_kp(state.db, &id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(StatusCode::NO_CONTENT)
 }
