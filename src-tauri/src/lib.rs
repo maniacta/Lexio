@@ -1,6 +1,7 @@
 mod models;
 mod server;
 mod db;
+mod repo;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
