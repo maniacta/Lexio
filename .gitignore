@@ -23,5 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
+# SQLite database
+*.db
+*.db-shm
+*.db-wal
+
 # OpenCode internal
 .omo/
