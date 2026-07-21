@@ -1,6 +1,9 @@
 mod server;
+mod db;
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
+use db::Database;
 use tauri::Manager;
 use tokio::net::TcpListener;
 
@@ -24,6 +27,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
+
+            let app_dir: PathBuf = app_handle.path().app_data_dir().unwrap();
+            std::fs::create_dir_all(&app_dir).unwrap();
+            let db_path = app_dir.join("lexio.db");
+
+            let db = Database::new(db_path.to_str().unwrap()).expect("Failed to open database");
+            db.migrate().expect("Failed to run migrations");
+            app_handle.manage(db);
 
             tauri::async_runtime::spawn(async move {
                 let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
