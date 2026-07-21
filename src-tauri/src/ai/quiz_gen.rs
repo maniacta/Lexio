@@ -7,7 +7,7 @@ pub async fn generate_quizzes(
     kp_content: &str,
     count: usize,
 ) -> Result<Vec<QuizQuestion>, String> {
-    let id_prefix = crate::models::new_id(); // placeholder, will be replaced by caller
+    let _id_prefix = crate::models::new_id(); // placeholder, will be replaced by caller
 
     let system_prompt = "You are a quiz generation assistant for spaced-repetition learning. Generate challenging multiple-choice and fill-in-the-blank questions that test true understanding, not memorization. Return JSON only.";
     let user_prompt = format!(

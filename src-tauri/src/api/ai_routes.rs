@@ -101,10 +101,11 @@ pub async fn generate_quiz(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or((StatusCode::NOT_FOUND, "KP not found".to_string()))?;
 
-    let questions = crate::ai::quiz_gen::generate_quizzes(&state.llm, &kp.title, &kp.content, req.count).await
+    let mut questions = crate::ai::quiz_gen::generate_quizzes(&state.llm, &kp.title, &kp.content, req.count).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    for q in &questions {
+    for q in &mut questions {
+        q.kp_id = req.kp_id.clone();
         repo::quiz::create_question(state.db, q)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     }
