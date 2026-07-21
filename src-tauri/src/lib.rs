@@ -1,3 +1,4 @@
+mod models;
 mod server;
 mod db;
 
