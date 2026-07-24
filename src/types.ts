@@ -121,7 +121,7 @@ export interface CreateProviderRequest {
 export interface UpdateProviderRequest {
   name: string;
   base_url: string;
-  api_key: string;
+  api_key?: string;
   api_format?: string;
   is_default?: boolean;
 }

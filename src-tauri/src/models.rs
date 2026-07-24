@@ -166,7 +166,7 @@ pub struct CreateProviderRequest {
 pub struct UpdateProviderRequest {
     pub name: String,
     pub base_url: String,
-    pub api_key: String,
+    pub api_key: Option<String>,
     pub api_format: Option<String>,
     pub is_default: Option<bool>,
 }

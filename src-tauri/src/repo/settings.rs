@@ -120,10 +120,25 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
         conn.execute("UPDATE model_providers SET is_default = 0", [])
             .map_err(|e| e.to_string())?;
     }
-    conn.execute(
-        "UPDATE model_providers SET name=?1, base_url=?2, api_key=?3, api_format=?4 WHERE id=?5",
-        rusqlite::params![req.name, req.base_url, req.api_key, api_format, id],
-    ).map_err(|e| e.to_string())?;
+    // Only update api_key when provided
+    if let Some(ref key) = req.api_key {
+        if !key.is_empty() {
+            conn.execute(
+                "UPDATE model_providers SET name=?1, base_url=?2, api_key=?3, api_format=?4 WHERE id=?5",
+                rusqlite::params![req.name, req.base_url, key, api_format, id],
+            ).map_err(|e| e.to_string())?;
+        } else {
+            conn.execute(
+                "UPDATE model_providers SET name=?1, base_url=?2, api_format=?3 WHERE id=?4",
+                rusqlite::params![req.name, req.base_url, api_format, id],
+            ).map_err(|e| e.to_string())?;
+        }
+    } else {
+        conn.execute(
+            "UPDATE model_providers SET name=?1, base_url=?2, api_format=?3 WHERE id=?4",
+            rusqlite::params![req.name, req.base_url, api_format, id],
+        ).map_err(|e| e.to_string())?;
+    }
     if let Some(is_def) = req.is_default {
         conn.execute("UPDATE model_providers SET is_default = ?1 WHERE id = ?2",
             rusqlite::params![is_def as i32, id],
@@ -376,49 +391,59 @@ pub fn init_presets(db: &Database) -> Result<(), String> {
         return Ok(());
     }
 
-    // DeepSeek
-    let ds_id = new_id();
-    conn.execute(
-        "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'DeepSeek', 'https://api.deepseek.com', '', 'openai_compatible', 1, 1)",
-        rusqlite::params![ds_id],
-    ).map_err(|e| e.to_string())?;
-    let ds_model_id = new_id();
-    conn.execute(
-        "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'deepseek-chat', 0.7, 4096, 1)",
-        rusqlite::params![ds_model_id, ds_id],
-    ).map_err(|e| e.to_string())?;
+    conn.execute("BEGIN", []).map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), String> {
+        // DeepSeek
+        let ds_id = new_id();
+        conn.execute(
+            "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'DeepSeek', 'https://api.deepseek.com', '', 'openai_compatible', 1, 1)",
+            rusqlite::params![ds_id],
+        ).map_err(|e| e.to_string())?;
+        let ds_model_id = new_id();
+        conn.execute(
+            "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'deepseek-chat', 0.7, 4096, 1)",
+            rusqlite::params![ds_model_id, ds_id],
+        ).map_err(|e| e.to_string())?;
 
-    // OpenAI
-    let oai_id = new_id();
-    conn.execute(
-        "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'OpenAI', 'https://api.openai.com/v1', '', 'openai_compatible', 1, 0)",
-        rusqlite::params![oai_id],
-    ).map_err(|e| e.to_string())?;
-    let oai_model_id = new_id();
-    conn.execute(
-        "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'gpt-4o', 0.7, 4096, 1)",
-        rusqlite::params![oai_model_id, oai_id],
-    ).map_err(|e| e.to_string())?;
+        // OpenAI
+        let oai_id = new_id();
+        conn.execute(
+            "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'OpenAI', 'https://api.openai.com/v1', '', 'openai_compatible', 1, 0)",
+            rusqlite::params![oai_id],
+        ).map_err(|e| e.to_string())?;
+        let oai_model_id = new_id();
+        conn.execute(
+            "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'gpt-4o', 0.7, 4096, 1)",
+            rusqlite::params![oai_model_id, oai_id],
+        ).map_err(|e| e.to_string())?;
 
-    // Anthropic
-    let anth_id = new_id();
-    conn.execute(
-        "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'Anthropic', 'https://api.anthropic.com', '', 'openai_compatible', 1, 0)",
-        rusqlite::params![anth_id],
-    ).map_err(|e| e.to_string())?;
-    let anth_model_id = new_id();
-    conn.execute(
-        "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'claude-sonnet-4-20250514', 0.7, 4096, 1)",
-        rusqlite::params![anth_model_id, anth_id],
-    ).map_err(|e| e.to_string())?;
+        // Anthropic
+        let anth_id = new_id();
+        conn.execute(
+            "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'Anthropic', 'https://api.anthropic.com', '', 'openai_compatible', 1, 0)",
+            rusqlite::params![anth_id],
+        ).map_err(|e| e.to_string())?;
+        let anth_model_id = new_id();
+        conn.execute(
+            "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'claude-sonnet-4-20250514', 0.7, 4096, 1)",
+            rusqlite::params![anth_model_id, anth_id],
+        ).map_err(|e| e.to_string())?;
 
-    // Default general settings
-    conn.execute(
-        "INSERT INTO settings (key, value) VALUES ('theme', 'system'), ('language', 'zh'), ('data_path', ''), ('search_enabled', 'false')",
-        [],
-    ).map_err(|e| e.to_string())?;
+        // Default general settings
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('theme', 'system'), ('language', 'zh'), ('data_path', ''), ('search_enabled', 'false')",
+            [],
+        ).map_err(|e| e.to_string())?;
 
-    Ok(())
+        Ok(())
+    })();
+
+    if result.is_ok() {
+        conn.execute("COMMIT", []).map_err(|e| e.to_string())?;
+    } else {
+        conn.execute("ROLLBACK", []).map_err(|e| e.to_string())?;
+    }
+    result
 }
 
 pub fn resolve_for_test(db: &Database, provider_id: &str, model_name: &str) -> Result<crate::ai::llm::LlmConfig, String> {

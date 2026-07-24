@@ -1,5 +1,5 @@
 use crate::ai::llm::{LlmClient, LlmConfig};
-use crate::models::{CreateKnowledgePointRequest, KnowledgePoint};
+use crate::models::CreateKnowledgePointRequest;
 
 pub async fn extract_knowledge_points(
     config: LlmConfig,

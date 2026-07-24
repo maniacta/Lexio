@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { SettingsData, ProviderWithModels, UpdateProviderRequest } from "../../types";
+import type { SettingsData, ProviderWithModels } from "../../types";
 import { api } from "../../api/client";
 
 interface Props {
@@ -53,7 +53,7 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
       } else if (editId) {
         await api.settings.updateProvider(editId, {
           name: formName, base_url: formUrl, api_key: formKey || undefined,
-        } as UpdateProviderRequest);
+        });
       }
       cancelEdit();
       onSaved();
@@ -88,7 +88,6 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
       await api.settings.updateProvider(id, {
         name: providers.find(p => p.id === id)!.name,
         base_url: providers.find(p => p.id === id)!.base_url,
-        api_key: undefined as unknown as string,
         is_default: true,
       });
       onSaved();
