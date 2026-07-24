@@ -163,18 +163,18 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
                 disabled={p.is_preset}>删除</button>
             </div>
 
-            {(editId === p.id || addNew) && (
+            {editId === p.id && (
               <div className="provider-edit-form">
-                <h4>{addNew ? "添加厂商" : `编辑 ${p.name}`}</h4>
+                <h4>编辑 {p.name}</h4>
                 <label>名称</label>
                 <input value={formName} onChange={e => setFormName(e.target.value)} />
                 <label>Base URL</label>
                 <input value={formUrl} onChange={e => setFormUrl(e.target.value)} />
                 <label>API Key</label>
                 <input type="password" value={formKey} onChange={e => setFormKey(e.target.value)}
-                  placeholder={!addNew ? "留空则不修改" : ""} />
+                  placeholder="留空则不修改" />
 
-                {editId && editProvider && (
+                {editProvider && (
                   <div className="models-section">
                     <h4>模型列表</h4>
                     <ul>
@@ -220,6 +220,27 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
           </li>
         ))}
       </ul>
+
+      {addNew && (
+        <div className="provider-edit-form">
+          <h4>添加厂商</h4>
+          <label>名称</label>
+          <input value={formName} onChange={e => setFormName(e.target.value)} />
+          <label>Base URL</label>
+          <input value={formUrl} onChange={e => setFormUrl(e.target.value)} />
+          <label>API Key</label>
+          <input type="password" value={formKey} onChange={e => setFormKey(e.target.value)} />
+
+          <div className="form-actions">
+            {testResult && <span className="setting-msg">{testResult}</span>}
+            <button className="btn-primary" onClick={handleSave} disabled={saving}>
+              {saving ? "保存中..." : "保存"}
+            </button>
+            <button className="btn-secondary" onClick={cancelEdit}>取消</button>
+          </div>
+        </div>
+      )}
+
       {!addNew && <button className="btn-secondary" onClick={startAdd}>+ 添加厂商</button>}
     </div>
   );
