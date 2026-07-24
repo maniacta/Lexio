@@ -139,3 +139,111 @@ pub struct AiGenerateQuizRequest {
 pub fn new_id() -> String {
     Uuid::new_v4().to_string()
 }
+
+// ── Settings models ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelProvider {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub api_format: String,
+    pub is_preset: bool,
+    pub is_default: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProviderRequest {
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub api_format: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateProviderRequest {
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub api_format: Option<String>,
+    pub is_default: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderModel {
+    pub id: String,
+    pub provider_id: String,
+    pub model_name: String,
+    pub temperature: f64,
+    pub max_tokens: i32,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateModelRequest {
+    pub model_name: String,
+    pub temperature: Option<f64>,
+    pub max_tokens: Option<i32>,
+    pub is_default: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateModelRequest {
+    pub model_name: String,
+    pub temperature: Option<f64>,
+    pub max_tokens: Option<i32>,
+    pub is_default: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskModelMapping {
+    pub task_name: String,
+    pub model_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetTaskModelRequest {
+    pub model_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeneralSettings {
+    pub theme: Option<String>,
+    pub language: Option<String>,
+    pub data_path: Option<String>,
+    pub search_enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderWithModels {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub api_format: String,
+    pub is_preset: bool,
+    pub is_default: bool,
+    pub created_at: String,
+    pub models: Vec<ProviderModel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsResponse {
+    pub general: serde_json::Value,
+    pub providers: Vec<ProviderWithModels>,
+    pub task_models: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestConnectionRequest {
+    pub provider_id: String,
+    pub model_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestConnectionResponse {
+    pub ok: bool,
+    pub message: String,
+}
