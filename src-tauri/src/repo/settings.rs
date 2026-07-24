@@ -423,6 +423,17 @@ pub fn init_presets(db: &Database) -> Result<(), String> {
 
 pub fn resolve_for_test(db: &Database, provider_id: &str, model_name: &str) -> Result<crate::ai::llm::LlmConfig, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    // Validate that model_name exists for this provider
+    let model_exists: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM provider_models WHERE provider_id = ?1 AND model_name = ?2",
+        rusqlite::params![provider_id, model_name],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    if !model_exists {
+        return Err(format!("Model '{}' not found for provider '{}'", model_name, provider_id));
+    }
+
     let (base_url, api_key, api_format): (String, String, String) = conn.query_row(
         "SELECT base_url, api_key, api_format FROM model_providers WHERE id = ?1",
         [provider_id],
