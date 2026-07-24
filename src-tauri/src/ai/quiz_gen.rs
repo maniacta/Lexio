@@ -1,8 +1,8 @@
-use crate::ai::llm::LlmClient;
+use crate::ai::llm::{LlmClient, LlmConfig};
 use crate::models::QuizQuestion;
 
 pub async fn generate_quizzes(
-    llm: &LlmClient,
+    config: LlmConfig,
     kp_title: &str,
     kp_content: &str,
     count: usize,
@@ -22,6 +22,7 @@ pub async fn generate_quizzes(
         count, kp_title, kp_content
     );
 
+    let llm = LlmClient::new(config);
     let response = llm.chat(system_prompt, &user_prompt).await?;
     let json_str = if let Some(start) = response.find("```json") {
         let after = &response[start + 7..];

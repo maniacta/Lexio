@@ -1,8 +1,8 @@
-use crate::ai::llm::LlmClient;
+use crate::ai::llm::{LlmClient, LlmConfig};
 use crate::models::{CreateKnowledgePointRequest, KnowledgePoint};
 
 pub async fn extract_knowledge_points(
-    llm: &LlmClient,
+    config: LlmConfig,
     source_title: &str,
     source_content: &str,
 ) -> Result<Vec<CreateKnowledgePointRequest>, String> {
@@ -14,6 +14,7 @@ pub async fn extract_knowledge_points(
         source_title, source_content
     );
 
+    let llm = LlmClient::new(config);
     let response = llm.chat(system_prompt, &user_prompt).await?;
     // Extract JSON from response (may be wrapped in markdown code block)
     let json_str = if let Some(start) = response.find("```json") {

@@ -12,6 +12,10 @@ struct ChatRequest {
     model: String,
     messages: Vec<ChatMessage>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +59,13 @@ impl LlmClient {
             ChatMessage { role: "system".to_string(), content: system_prompt.to_string() },
             ChatMessage { role: "user".to_string(), content: user_prompt.to_string() },
         ];
-        let req = ChatRequest { model: self.config.model.clone(), messages, stream: false };
+        let req = ChatRequest {
+            model: self.config.model.clone(),
+            messages,
+            stream: false,
+            temperature: Some(self.config.temperature),
+            max_tokens: Some(self.config.max_tokens),
+        };
 
         let resp = self.client
             .post(format!("{}/chat/completions", self.config.base_url))
@@ -81,7 +91,13 @@ impl LlmClient {
             ChatMessage { role: "system".to_string(), content: system_prompt.to_string() },
             ChatMessage { role: "user".to_string(), content: user_prompt.to_string() },
         ];
-        let req = ChatRequest { model: self.config.model.clone(), messages, stream: true };
+        let req = ChatRequest {
+            model: self.config.model.clone(),
+            messages,
+            stream: true,
+            temperature: Some(self.config.temperature),
+            max_tokens: Some(self.config.max_tokens),
+        };
         let mut full_response = String::new();
 
         let resp = self.client
