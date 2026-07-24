@@ -30,3 +30,4 @@ dist-ssr
 
 # OpenCode internal
 .omo/
+.worktrees/
