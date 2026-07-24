@@ -420,3 +420,16 @@ pub fn init_presets(db: &Database) -> Result<(), String> {
 
     Ok(())
 }
+
+pub fn resolve_for_test(db: &Database, provider_id: &str, model_name: &str) -> Result<crate::ai::llm::LlmConfig, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let (base_url, api_key, api_format): (String, String, String) = conn.query_row(
+        "SELECT base_url, api_key, api_format FROM model_providers WHERE id = ?1",
+        [provider_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).map_err(|e| e.to_string())?;
+    Ok(crate::ai::llm::LlmConfig {
+        base_url, api_key, model: model_name.to_string(),
+        temperature: 0.7, max_tokens: 100, api_format,
+    })
+}
