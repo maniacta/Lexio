@@ -2,14 +2,17 @@ import { useState } from "react";
 import SourceList from "./Sidebar/SourceList";
 import KpList from "./Sidebar/KpList";
 import { usePlatform, getRunMode } from "../utils/tauri";
+import type { View } from "./Layout";
 import "./Sidebar.css";
 
 interface Props {
   onSelectKp: (id: string) => void;
   selectedKpId?: string;
+  currentView: View;
+  onNavigate: (view: View) => void;
 }
 
-export default function Sidebar({ onSelectKp, selectedKpId }: Props) {
+export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavigate }: Props) {
   const platform = usePlatform();
   const runMode = getRunMode();
   const [tab, setTab] = useState<"sources" | "knowledge">("knowledge");
@@ -33,6 +36,13 @@ export default function Sidebar({ onSelectKp, selectedKpId }: Props) {
       {tab === "knowledge" && <KpList onSelect={onSelectKp} selectedId={selectedKpId} />}
       {tab === "sources" && <SourceList />}
       <div className="sidebar-footer">
+        <button
+          className={`sidebar-settings-btn ${currentView === "settings" ? "active" : ""}`}
+          onClick={() => onNavigate("settings")}
+          title="设置"
+        >
+          ⚙
+        </button>
         <span className={`sidebar-mode-badge ${runMode}`}>
           {platform}
         </span>

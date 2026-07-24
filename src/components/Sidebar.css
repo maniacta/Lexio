@@ -144,3 +144,28 @@
   color: var(--accent-color, #2563eb);
   border-bottom-color: var(--accent-color, #2563eb);
 }
+
+.sidebar-settings-btn {
+  display: block;
+  margin-bottom: var(--spacing-xs);
+  padding: 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: var(--sidebar-text);
+  font-size: 18px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-settings-btn:hover {
+  background: var(--sidebar-hover);
+  color: #e0e0f0;
+}
+
+.sidebar-settings-btn.active {
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-accent);
+  border-color: var(--sidebar-accent);
+}
