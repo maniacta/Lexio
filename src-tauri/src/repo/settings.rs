@@ -38,23 +38,26 @@ pub fn set_settings(db: &Database, entries: &[(String, String)]) -> Result<(), S
 // ── Providers ──
 
 pub fn list_providers(db: &Database) -> Result<Vec<ProviderWithModels>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at FROM model_providers ORDER BY created_at ASC"
-    ).map_err(|e| e.to_string())?;
-    let providers: Vec<ModelProvider> = stmt
-        .query_map([], |row| {
-            Ok(ModelProvider {
-                id: row.get(0)?, name: row.get(1)?, base_url: row.get(2)?,
-                api_key: row.get(3)?, api_format: row.get(4)?,
-                is_preset: row.get::<_, i32>(5)? != 0,
-                is_default: row.get::<_, i32>(6)? != 0,
-                created_at: row.get(7)?,
+    let providers: Vec<ModelProvider> = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at FROM model_providers ORDER BY created_at ASC"
+        ).map_err(|e| e.to_string())?;
+        let result: Vec<ModelProvider> = stmt
+            .query_map([], |row| {
+                Ok(ModelProvider {
+                    id: row.get(0)?, name: row.get(1)?, base_url: row.get(2)?,
+                    api_key: row.get(3)?, api_format: row.get(4)?,
+                    is_preset: row.get::<_, i32>(5)? != 0,
+                    is_default: row.get::<_, i32>(6)? != 0,
+                    created_at: row.get(7)?,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        result
+    };
 
     let mut result = Vec::new();
     for p in providers {
@@ -135,6 +138,11 @@ pub fn delete_provider(db: &Database, id: &str) -> Result<(), String> {
         return Err("Cannot delete preset provider".to_string());
     }
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    // Clean up task_models referencing models of this provider
+    conn.execute(
+        "DELETE FROM task_models WHERE model_id IN (SELECT id FROM provider_models WHERE provider_id = ?1)",
+        [id],
+    ).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM provider_models WHERE provider_id = ?1", [id])
         .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM model_providers WHERE id = ?1", [id])
@@ -194,9 +202,15 @@ pub fn update_model(db: &Database, provider_id: &str, model_id: &str, req: &Upda
             .map_err(|e| e.to_string())?;
     }
     conn.execute(
-        "UPDATE provider_models SET model_name=?1, temperature=?2, max_tokens=?3, is_default=?4 WHERE id=?5 AND provider_id=?6",
-        rusqlite::params![req.model_name, temp, tokens, req.is_default.unwrap_or(false) as i32, model_id, provider_id],
+        "UPDATE provider_models SET model_name=?1, temperature=?2, max_tokens=?3 WHERE id=?4 AND provider_id=?5",
+        rusqlite::params![req.model_name, temp, tokens, model_id, provider_id],
     ).map_err(|e| e.to_string())?;
+    if let Some(is_def) = req.is_default {
+        conn.execute(
+            "UPDATE provider_models SET is_default = ?1 WHERE id = ?2 AND provider_id = ?3",
+            rusqlite::params![is_def as i32, model_id, provider_id],
+        ).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -216,8 +230,20 @@ pub fn delete_model(db: &Database, provider_id: &str, model_id: &str) -> Result<
     if count <= 1 {
         return Err("Cannot delete the only model of a provider.".to_string());
     }
+    // Check if we're deleting the default model
+    let is_default: i32 = conn.query_row(
+        "SELECT is_default FROM provider_models WHERE id = ?1 AND provider_id = ?2",
+        [model_id, provider_id], |r| r.get(0)
+    ).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM provider_models WHERE id = ?1 AND provider_id = ?2", [model_id, provider_id])
         .map_err(|e| e.to_string())?;
+    if is_default != 0 {
+        // Promote another model to default
+        conn.execute(
+            "UPDATE provider_models SET is_default = 1 WHERE provider_id = ?1 AND id = (SELECT id FROM provider_models WHERE provider_id = ?1 LIMIT 1)",
+            [provider_id],
+        ).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -280,10 +306,12 @@ pub fn set_task_model(db: &Database, task_name: &str, req: &SetTaskModelRequest)
 /// falls back to the default provider's default model.
 pub fn resolve_llm_config(db: &Database, task_name: &str) -> Result<crate::ai::llm::LlmConfig, String> {
     // Try task-specific model
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let model_id: Option<String> = conn.query_row(
-        "SELECT model_id FROM task_models WHERE task_name = ?1", [task_name], |row| row.get(0)
-    ).ok().flatten();
+    let model_id: Option<String> = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT model_id FROM task_models WHERE task_name = ?1", [task_name], |row| row.get(0)
+        ).ok().flatten()
+    };
 
     let (provider, model) = if let Some(mid) = model_id {
         get_model_full(db, &mid)?.ok_or("Assigned model not found")?
