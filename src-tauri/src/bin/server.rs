@@ -13,20 +13,11 @@ fn main() {
     db.migrate().expect("Failed to run migrations");
     let db: &'static lexio_lib::db::Database = Box::leak(Box::new(db));
 
-    let llm_config = lexio_lib::ai::llm::LlmConfig {
-        base_url: std::env::var("LLM_BASE_URL")
-            .unwrap_or_else(|_| "https://api.openai.com/v1".into()),
-        api_key: std::env::var("LLM_API_KEY").unwrap_or_default(),
-        model: std::env::var("LLM_MODEL")
-            .unwrap_or_else(|_| "gpt-4o-mini".into()),
-        temperature: 0.7,
-        max_tokens: 4096,
-        api_format: "openai_compatible".to_string(),
-    };
-    let llm = lexio_lib::ai::llm::LlmClient::new(llm_config);
+    lexio_lib::repo::settings::init_presets(db)
+        .expect("Failed to initialize settings presets");
 
     let app_state: &'static lexio_lib::api::ai_routes::AppState =
-        Box::leak(Box::new(lexio_lib::api::ai_routes::AppState { db, llm }));
+        Box::leak(Box::new(lexio_lib::api::ai_routes::AppState { db }));
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {

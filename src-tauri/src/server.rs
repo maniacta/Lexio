@@ -1,7 +1,7 @@
 use axum::{routing::get, Router};
 use http::{Method, header};
 use tower_http::cors::CorsLayer;
-use crate::api::{sources, knowledge, quiz, learning, ai_routes};
+use crate::api::{sources, knowledge, quiz, learning, ai_routes, settings};
 
 /// Build the Axum application router.
 pub fn app(state: &'static ai_routes::AppState) -> Router {
@@ -24,6 +24,20 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
         .route("/api/ai/research", axum::routing::post(ai_routes::start_research))
         .route("/api/ai/generate-quiz", axum::routing::post(ai_routes::generate_quiz))
         .route("/api/ai/update-mastery", axum::routing::post(ai_routes::update_mastery))
+        // Settings
+        .route("/api/settings", get(settings::get_settings))
+        .route("/api/settings/providers",
+            get(settings::list_providers).post(settings::create_provider))
+        .route("/api/settings/providers/{id}",
+            axum::routing::put(settings::update_provider).delete(settings::delete_provider))
+        .route("/api/settings/providers/{id}/models",
+            axum::routing::post(settings::create_model))
+        .route("/api/settings/providers/{provider_id}/models/{model_id}",
+            axum::routing::put(settings::update_model).delete(settings::delete_model))
+        .route("/api/settings/tasks", get(settings::get_task_models))
+        .route("/api/settings/tasks/{task_name}", axum::routing::put(settings::set_task_model))
+        .route("/api/settings/general", axum::routing::put(settings::update_general))
+        .route("/api/settings/test-connection", axum::routing::post(settings::test_connection))
         .layer(cors())
         .with_state(state)
 }
@@ -35,7 +49,7 @@ fn cors() -> CorsLayer {
             "tauri://localhost".parse::<axum::http::HeaderValue>().unwrap(),
             "https://tauri.localhost".parse::<axum::http::HeaderValue>().unwrap(),
         ])
-        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([header::CONTENT_TYPE])
 }
 

@@ -4,16 +4,20 @@ use crate::db::Database;
 use crate::models::{AiStartResearchRequest, CreateKnowledgePointRequest, CreateLearningPlanRequest};
 use crate::repo::{self, source, knowledge};
 
-// AppState holding both db and llm client
+// AppState holding db
 pub struct AppState {
     pub db: &'static Database,
-    pub llm: LlmClient,
 }
 
 pub async fn start_research(
     State(state): State<&'static AppState>,
     Json(req): Json<AiStartResearchRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    // Resolve LLM config for chat task
+    let llm_config = repo::settings::resolve_llm_config(state.db, "chat")
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("No model configured: {}", e)))?;
+    let llm = LlmClient::new(llm_config);
+
     // Step 1: AI searches web for sources (stub: use LLM to generate search results)
     let search_prompt = format!(
         "You are helping a user learn about: {}. \
@@ -21,7 +25,7 @@ pub async fn start_research(
         Return as JSON array with fields: title, description.",
         req.topic
     );
-    let response = state.llm.chat("You are a research assistant.", &search_prompt).await
+    let response = llm.chat("You are a research assistant.", &search_prompt).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Parse AI response as source suggestions
@@ -58,7 +62,7 @@ pub async fn start_research(
         Return ONLY a JSON array of objects with fields: title, summary (one sentence), content (2-3 paragraphs), tags (array of strings).",
         req.topic, all_content
     );
-    let kp_response = state.llm.chat("You are a knowledge extraction assistant. Return JSON only.", &kp_prompt).await
+    let kp_response = llm.chat("You are a knowledge extraction assistant. Return JSON only.", &kp_prompt).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let kp_json = extract_json(&kp_response);
@@ -101,7 +105,10 @@ pub async fn generate_quiz(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or((StatusCode::NOT_FOUND, "KP not found".to_string()))?;
 
-    let mut questions = crate::ai::quiz_gen::generate_quizzes(&state.llm, &kp.title, &kp.content, req.count).await
+    let llm_config = repo::settings::resolve_llm_config(state.db, "quiz_gen")
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("No model configured: {}", e)))?;
+
+    let mut questions = crate::ai::quiz_gen::generate_quizzes(llm_config, &kp.title, &kp.content, req.count).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     for q in &mut questions {
