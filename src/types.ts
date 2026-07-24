@@ -75,3 +75,72 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
 }
+
+export interface ModelProvider {
+  id: string;
+  name: string;
+  base_url: string;
+  api_key: string;
+  api_format: string;
+  is_preset: boolean;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface ProviderModel {
+  id: string;
+  provider_id: string;
+  model_name: string;
+  temperature: number;
+  max_tokens: number;
+  is_default: boolean;
+}
+
+export interface ProviderWithModels extends ModelProvider {
+  models: ProviderModel[];
+}
+
+export interface TaskModelEntry {
+  model_id: string | null;
+  resolved: string | null;
+}
+
+export interface SettingsData {
+  general: Record<string, string>;
+  providers: ProviderWithModels[];
+  task_models: Record<string, TaskModelEntry>;
+}
+
+export interface CreateProviderRequest {
+  name: string;
+  base_url: string;
+  api_key: string;
+  api_format?: string;
+}
+
+export interface UpdateProviderRequest {
+  name: string;
+  base_url: string;
+  api_key: string;
+  api_format?: string;
+  is_default?: boolean;
+}
+
+export interface CreateModelRequest {
+  model_name: string;
+  temperature?: number;
+  max_tokens?: number;
+  is_default?: boolean;
+}
+
+export interface UpdateModelRequest {
+  model_name: string;
+  temperature?: number;
+  max_tokens?: number;
+  is_default?: boolean;
+}
+
+export interface TestConnectionResponse {
+  ok: boolean;
+  message: string;
+}

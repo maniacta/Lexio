@@ -1,4 +1,4 @@
-import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult } from "../types";
+import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry } from "../types";
 
 // Vite proxy forwards /api/* to backend on localhost:3001
 const API_BASE = "/api";
@@ -77,6 +77,40 @@ export const api = {
       request<void>("/ai/update-mastery", {
         method: "POST",
         body: JSON.stringify({ kp_id: kpId, is_correct: isCorrect }),
+      }),
+  },
+
+  // Settings
+  settings: {
+    getAll: () => request<SettingsData>("/settings"),
+    listProviders: () => request<ProviderWithModels[]>("/settings/providers"),
+    createProvider: (data: CreateProviderRequest) =>
+      request<ModelProvider>("/settings/providers", { method: "POST", body: JSON.stringify(data) }),
+    updateProvider: (id: string, data: UpdateProviderRequest) =>
+      request<void>(`/settings/providers/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    deleteProvider: (id: string) =>
+      request<void>(`/settings/providers/${id}`, { method: "DELETE" }),
+    createModel: (providerId: string, data: CreateModelRequest) =>
+      request<ProviderModel>(`/settings/providers/${providerId}/models`, {
+        method: "POST", body: JSON.stringify(data),
+      }),
+    updateModel: (providerId: string, modelId: string, data: UpdateModelRequest) =>
+      request<void>(`/settings/providers/${providerId}/models/${modelId}`, {
+        method: "PUT", body: JSON.stringify(data),
+      }),
+    deleteModel: (providerId: string, modelId: string) =>
+      request<void>(`/settings/providers/${providerId}/models/${modelId}`, { method: "DELETE" }),
+    getTaskModels: () => request<Record<string, TaskModelEntry>>("/settings/tasks"),
+    setTaskModel: (taskName: string, modelId: string | null) =>
+      request<void>(`/settings/tasks/${taskName}`, {
+        method: "PUT", body: JSON.stringify({ model_id: modelId }),
+      }),
+    updateGeneral: (data: Record<string, string | boolean>) =>
+      request<void>("/settings/general", { method: "PUT", body: JSON.stringify(data) }),
+    testConnection: (providerId: string, modelName: string) =>
+      request<TestConnectionResponse>("/settings/test-connection", {
+        method: "POST",
+        body: JSON.stringify({ provider_id: providerId, model_name: modelName }),
       }),
   },
 };
