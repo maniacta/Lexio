@@ -34,6 +34,9 @@ pub struct LlmConfig {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    pub temperature: f64,
+    pub max_tokens: i32,
+    pub api_format: String,
 }
 
 pub struct LlmClient {

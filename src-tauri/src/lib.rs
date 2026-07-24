@@ -49,6 +49,9 @@ pub fn run() {
                 api_key: std::env::var("LLM_API_KEY").unwrap_or_default(),
                 model: std::env::var("LLM_MODEL")
                     .unwrap_or_else(|_| "gpt-4o-mini".into()),
+                temperature: 0.7,
+                max_tokens: 4096,
+                api_format: "openai_compatible".to_string(),
             };
             let llm = ai::llm::LlmClient::new(llm_config);
 
