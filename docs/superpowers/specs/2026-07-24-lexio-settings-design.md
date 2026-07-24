@@ -121,15 +121,15 @@ DeepSeek 设为默认厂商（`is_default=1`）。每个预设厂商默认启用
       "is_preset": true,
       "is_default": true,
       "models": [
-        { "id": "uuid", "model_name": "deepseek-chat", "temperature": 0.7, "max_tokens": 4096 }
+        { "id": "uuid", "model_name": "deepseek-chat", "temperature": 0.7, "max_tokens": 4096, "is_default": true }
       ]
     }
   ],
   "task_models": {
-    "chat":     { "model_id": null },
-    "extract":  { "model_id": null },
-    "quiz_gen": { "model_id": null },
-    "search":   { "model_id": null }
+    "chat":     { "model_id": null, "resolved": "DeepSeek / deepseek-chat" },
+    "extract":  { "model_id": null, "resolved": "DeepSeek / deepseek-chat" },
+    "quiz_gen": { "model_id": null, "resolved": "DeepSeek / deepseek-chat" },
+    "search":   { "model_id": null, "resolved": "DeepSeek / deepseek-chat" }
   }
 }
 ```
@@ -144,7 +144,7 @@ DeepSeek 设为默认厂商（`is_default=1`）。每个预设厂商默认启用
 }
 ```
 
-`model_id` 为 `null` 表示跟随默认。
+`model_id` 为 `null` 表示跟随默认。`resolved` 字段展示当前实际生效的模型（默认厂商的默认模型），仅在前端展示用。
 
 **`POST /api/settings/test-connection`** — 测试连接：
 
@@ -170,7 +170,8 @@ DeepSeek 设为默认厂商（`is_default=1`）。每个预设厂商默认启用
 |------|---------|
 | 预设厂商不可删除 | API handler |
 | 删除模型时检查是否被 task_models 引用 | repo 层 |
-| is_default 唯一性：设为默认时取消其他厂商的默认状态 | repo 层 |
+| is_default 唯一性（厂商级别）：设为默认时取消其他厂商的默认状态 | repo 层 |
+| is_default 唯一性（模型级别）：同一厂商下只有一个默认模型 | repo 层 |
 | 至少保留一个模型（每个厂商至少有一个模型） | repo 层 |
 
 ---
@@ -223,7 +224,7 @@ DeepSeek 设为默认厂商（`is_default=1`）。每个预设厂商默认启用
 
 | 场景 | 处理 |
 |------|------|
-| 进入设置页 | 调用 `GET /api/settings` 获取全部配置 |
+| 进入设置页 | 调用 `GET /api/settings` 获取全部配置（含 `resolved` 字段展示实际生效的模型） |
 | 切换标签页 | 前端维护三份编辑态副本，切换不丢失未保存内容 |
 | 离开设置页（有未保存更改） | 弹窗确认 |
 | 测试连接 | 发送测试请求，显示加载动画 + 成功/失败结果 |
