@@ -107,7 +107,39 @@ impl Database {
             CREATE TRIGGER IF NOT EXISTS sources_fts_au AFTER UPDATE ON sources BEGIN
                 INSERT INTO sources_fts(sources_fts, rowid, title, content) VALUES('delete', old.rowid, old.title, old.content);
                 INSERT INTO sources_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
-            END;"
+            END;
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS model_providers (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                api_key TEXT NOT NULL DEFAULT '',
+                api_format TEXT NOT NULL DEFAULT 'openai_compatible',
+                is_preset INTEGER NOT NULL DEFAULT 0,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS provider_models (
+                id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL REFERENCES model_providers(id),
+                model_name TEXT NOT NULL,
+                temperature REAL NOT NULL DEFAULT 0.7,
+                max_tokens INTEGER NOT NULL DEFAULT 4096,
+                is_default INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS task_models (
+                id TEXT PRIMARY KEY,
+                task_name TEXT NOT NULL UNIQUE,
+                model_id TEXT,
+                FOREIGN KEY (model_id) REFERENCES provider_models(id)
+            );"
         )?;
         Ok(())
     }
