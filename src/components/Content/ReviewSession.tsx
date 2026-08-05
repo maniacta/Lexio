@@ -78,15 +78,12 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
     setLoading(true);
     try {
       const res = await api.quiz.submit(question.id, answer);
-      await api.ai.updateMastery(question.kp_id, res.is_correct);
-      // Get updated mastery for next_review_at
-      const reviews = await api.learning.getDueReviews();
-      const masteryForKp = reviews.find((r) => r.kp_id === question.kp_id);
+      const mastery = await api.ai.updateMastery(question.kp_id, res.is_correct);
       setResult({
         user_answer: answer,
         is_correct: res.is_correct,
         explanation: res.explanation,
-        next_review_at: masteryForKp?.next_review_at || "",
+        next_review_at: mastery.next_review_at,
       });
     } catch (e: any) {
       setError(e.message);

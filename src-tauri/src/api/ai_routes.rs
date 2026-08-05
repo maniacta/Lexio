@@ -130,7 +130,7 @@ pub struct UpdateMasteryRequest {
 pub async fn update_mastery(
     State(state): State<&'static AppState>,
     Json(req): Json<UpdateMasteryRequest>,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let existing = repo::learning::get_mastery_by_kp(state.db, &req.kp_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -161,7 +161,7 @@ pub async fn update_mastery(
     };
     repo::learning::upsert_mastery(state.db, &record)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok(StatusCode::OK)
+    Ok(Json(serde_json::to_value(&record).unwrap()))
 }
 
 fn extract_json(response: &str) -> &str {

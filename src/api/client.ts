@@ -75,7 +75,7 @@ export const api = {
         body: JSON.stringify({ kp_id: kpId, count }),
       }),
     updateMastery: (kpId: string, isCorrect: boolean) =>
-      request<void>("/ai/update-mastery", {
+      request<MasteryRecord>("/ai/update-mastery", {
         method: "POST",
         body: JSON.stringify({ kp_id: kpId, is_correct: isCorrect }),
       }),

@@ -74,11 +74,9 @@ export default function QuizCard({ question, result, loading, onSubmit, onNext, 
             {result.is_correct ? "✅ 正确！" : "❌ 不正确"}
           </div>
           <div className="quiz-result-explanation">{result.explanation}</div>
-          {!isLast && (
-            <button className="quiz-next-btn" onClick={onNext}>
-              下一题
-            </button>
-          )}
+          <button className="quiz-next-btn" onClick={onNext}>
+            {isLast ? "完成复习" : "下一题"}
+          </button>
         </div>
       )}
     </div>
