@@ -1,4 +1,4 @@
-import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry } from "../types";
+import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem } from "../types";
 
 // Vite proxy forwards /api/* to backend on localhost:3001
 const API_BASE = "/api";
@@ -62,6 +62,7 @@ export const api = {
     createPlan: (data: { title: string; goal: string; kp_ids: string[] }) =>
       request<LearningPlan>("/learning/plans", { method: "POST", body: JSON.stringify(data) }),
     getDueReviews: () => request<MasteryRecord[]>("/learning/reviews/due"),
+    getDueReviewsWithKp: () => request<ReviewItem[]>("/learning/reviews/due?with_kp=true"),
   },
 
   // AI

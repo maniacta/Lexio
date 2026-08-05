@@ -65,6 +65,18 @@ export interface MasteryRecord {
   last_reviewed_at: string | null;
 }
 
+export interface ReviewItem {
+  mastery: MasteryRecord;
+  knowledge_point: KnowledgePoint;
+}
+
+export interface ReviewResult {
+  kp_id: string;
+  kp_title: string;
+  is_correct: boolean;
+  next_review_at: string;
+}
+
 export interface AiResearchResult {
   sources: Source[];
   knowledge_points: KnowledgePoint[];
