@@ -68,6 +68,56 @@ pub fn get_mastery_by_kp(db: &Database, kp_id: &str) -> Result<Option<MasteryRec
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
+/// Return due reviews along with the associated KnowledgePoint data.
+pub fn get_due_reviews_with_kp(db: &Database) -> Result<Vec<serde_json::Value>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut stmt = conn
+        .prepare(
+            "SELECT m.id, m.kp_id, m.ease_factor, m.interval_days, m.repetitions,
+                    m.next_review_at, m.last_reviewed_at,
+                    kp.id, kp.title, kp.summary, kp.content, kp.tags, kp.source_ids, kp.created_at
+             FROM mastery_records m
+             JOIN knowledge_points kp ON m.kp_id = kp.id
+             WHERE m.next_review_at <= ?1
+             ORDER BY m.next_review_at ASC"
+        )
+        .map_err(|e| e.to_string())?;
+
+    let items: Vec<serde_json::Value> = stmt
+        .query_map([&now], |row| {
+            let tags_raw: String = row.get(11)?;
+            let tags: Vec<String> = serde_json::from_str(&tags_raw).unwrap_or_default();
+            let source_ids_raw: String = row.get(12)?;
+            let source_ids: Vec<String> = serde_json::from_str(&source_ids_raw).unwrap_or_default();
+            Ok(serde_json::json!({
+                "mastery": {
+                    "id": row.get::<_, String>(0)?,
+                    "kp_id": row.get::<_, String>(1)?,
+                    "ease_factor": row.get::<_, f64>(2)?,
+                    "interval_days": row.get::<_, i32>(3)?,
+                    "repetitions": row.get::<_, i32>(4)?,
+                    "next_review_at": row.get::<_, String>(5)?,
+                    "last_reviewed_at": row.get::<_, Option<String>>(6)?
+                },
+                "knowledge_point": {
+                    "id": row.get::<_, String>(7)?,
+                    "title": row.get::<_, String>(8)?,
+                    "summary": row.get::<_, String>(9)?,
+                    "content": row.get::<_, String>(10)?,
+                    "tags": tags,
+                    "source_ids": source_ids,
+                    "created_at": row.get::<_, String>(13)?
+                }
+            }))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(items)
+}
+
 fn plan_from_row(row: &rusqlite::Row) -> rusqlite::Result<LearningPlan> {
     let kp_ids_str: String = row.get(3)?;
     Ok(LearningPlan {

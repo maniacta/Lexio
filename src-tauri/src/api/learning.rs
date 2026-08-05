@@ -1,7 +1,8 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::{Query, State}, http::StatusCode, Json};
 use crate::api::ai_routes::AppState;
 use crate::models::CreateLearningPlanRequest;
 use crate::repo;
+use std::collections::HashMap;
 
 pub async fn create_plan(
     State(state): State<&'static AppState>,
@@ -22,8 +23,16 @@ pub async fn list_plans(
 
 pub async fn get_due_reviews(
     State(state): State<&'static AppState>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let records = repo::learning::get_due_reviews(state.db)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok(Json(serde_json::to_value(&records).unwrap()))
+    let with_kp = params.get("with_kp").map(|v| v == "true").unwrap_or(false);
+    if with_kp {
+        let items = repo::learning::get_due_reviews_with_kp(state.db)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        Ok(Json(serde_json::json!(items)))
+    } else {
+        let records = repo::learning::get_due_reviews(state.db)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        Ok(Json(serde_json::to_value(&records).unwrap()))
+    }
 }
