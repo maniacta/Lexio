@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SourceList from "./Sidebar/SourceList";
 import KpList from "./Sidebar/KpList";
 import { usePlatform, getRunMode } from "../utils/tauri";
+import { api } from "../api/client";
 import type { View } from "./Layout";
 import "./Sidebar.css";
 
@@ -16,6 +17,11 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
   const platform = usePlatform();
   const runMode = getRunMode();
   const [tab, setTab] = useState<"sources" | "knowledge">("knowledge");
+  const [dueCount, setDueCount] = useState<number>(0);
+
+  useEffect(() => {
+    api.learning.getDueReviews().then(records => setDueCount(records.length)).catch(() => {});
+  }, [currentView]);
 
   return (
     <aside className="sidebar">
@@ -35,6 +41,13 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
       </div>
       {tab === "knowledge" && <KpList onSelect={onSelectKp} selectedId={selectedKpId} />}
       {tab === "sources" && <SourceList />}
+      <button
+        className={`sidebar-tab review ${currentView === "review" ? "active" : ""}`}
+        onClick={() => onNavigate("review")}
+      >
+        复习
+        {dueCount > 0 && <span className="review-badge">{dueCount}</span>}
+      </button>
       <div className="sidebar-footer">
         <button
           className={`sidebar-settings-btn ${currentView === "settings" ? "active" : ""}`}

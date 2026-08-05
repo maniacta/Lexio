@@ -169,3 +169,25 @@
   color: var(--sidebar-accent);
   border-color: var(--sidebar-accent);
 }
+
+.sidebar-tab.review {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.review-badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  background: #ef4444;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 9px;
+  padding: 0 4px;
+}

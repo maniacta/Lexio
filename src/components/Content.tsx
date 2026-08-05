@@ -1,6 +1,7 @@
 import ChatPanel from "./Chat/ChatPanel";
 import LearningView from "./Content/LearningView";
 import SettingsView from "./Content/SettingsView";
+import ReviewView from "./Content/ReviewView";
 import type { View } from "./Layout";
 import "./Content.css";
 
@@ -14,6 +15,7 @@ export default function Content({ view, selectedKpId }: Props) {
     <main className="content">
       {view === "settings" ? <SettingsView /> :
        view === "learning" ? <LearningView kpId={selectedKpId} /> :
+       view === "review" ? <ReviewView /> :
        <ChatPanel />}
     </main>
   );

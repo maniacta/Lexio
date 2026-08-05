@@ -3,7 +3,7 @@ import Sidebar from "./Sidebar";
 import Content from "./Content";
 import "./Layout.css";
 
-export type View = "chat" | "learning" | "settings";
+export type View = "chat" | "learning" | "settings" | "review";
 
 export default function Layout() {
   const [selectedKpId, setSelectedKpId] = useState<string | null>(null);
