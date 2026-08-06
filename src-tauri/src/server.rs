@@ -5,7 +5,7 @@ use axum::{
 };
 use http::{header, Method};
 use tower_http::cors::CorsLayer;
-use crate::api::{auth, sources, knowledge, quiz, learning, ai_routes, settings};
+use crate::api::{auth, sources, knowledge, quiz, learning, ai_routes, settings, relation};
 
 /// Build the Axum application router.
 pub fn app(state: &'static ai_routes::AppState) -> Router {
@@ -19,6 +19,9 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
         // Knowledge Points
         .route("/api/knowledge", get(knowledge::list_kps).post(knowledge::create_kp))
         .route("/api/knowledge/{id}", get(knowledge::get_kp).delete(knowledge::delete_kp))
+        .route("/api/knowledge/{id}/relations",
+            get(relation::list_for_kp).post(relation::create_for_kp))
+        .route("/api/relations/{id}", axum::routing::delete(relation::delete_relation))
         // Quiz
         .route("/api/quiz/kp/{kp_id}", get(quiz::get_quiz_by_kp))
         .route("/api/quiz/submit", axum::routing::post(quiz::submit_answer))

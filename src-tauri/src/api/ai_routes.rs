@@ -1,8 +1,8 @@
 use axum::{extract::State, http::StatusCode, Json};
-use crate::ai::{create_provider, extract_json_payload, truncate_chars};
+use crate::ai::truncate_chars;
 use crate::api::blocking;
 use crate::db::Database;
-use crate::models::{AiStartResearchRequest, CreateKnowledgePointRequest, CreateLearningPlanRequest};
+use crate::models::{AiStartResearchRequest, CreateLearningPlanRequest};
 use crate::repo;
 
 const MAX_TOPIC_CHARS: usize = 500;
@@ -38,53 +38,22 @@ pub async fn start_research(
         Ok(cfg) => cfg,
         Err((_, e)) => return Err(map_llm_resolve_err(e)),
     };
-    let llm = create_provider(llm_config).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
-    let search_prompt = truncate_chars(
-        &format!(
-            "用户想学习主题：{}。\n\
-请列出 3 份高质量学习资料。\n\
-返回 JSON 对象，格式严格为：{{\"items\":[{{\"title\":\"...\",\"description\":\"...\"}}]}}",
-            topic
-        ),
-        MAX_PROMPT_CHARS,
-    );
-    let response = llm
-        .chat_json(
-            "You are a research assistant. Always reply with a valid JSON object only.",
-            &search_prompt,
-        )
+    // Clone config for the second LLM call (provider holds the first)
+    let extract_config = crate::ai::LlmConfig {
+        kind: llm_config.kind,
+        base_url: llm_config.base_url.clone(),
+        api_key: llm_config.api_key.clone(),
+        model: llm_config.model.clone(),
+        temperature: llm_config.temperature,
+        max_tokens: llm_config.max_tokens,
+    };
+
+    let drafts = crate::ai::extract::propose_sources(llm_config, &topic)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    #[derive(serde::Deserialize)]
-    struct SearchResult {
-        title: String,
-        description: String,
-    }
-    #[derive(serde::Deserialize)]
-    struct SearchEnvelope {
-        items: Vec<SearchResult>,
-    }
-
-    let json_str = extract_json_payload(&response);
-    let results: Vec<SearchResult> =
-        if let Ok(env) = serde_json::from_str::<SearchEnvelope>(json_str) {
-            env.items
-        } else {
-            serde_json::from_str(json_str).map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!(
-                        "Parse error: {} | {}",
-                        e,
-                        json_str.chars().take(200).collect::<String>()
-                    ),
-                )
-            })?
-        };
-
-    let source_reqs: Vec<crate::models::CreateSourceRequest> = results
+    let source_reqs: Vec<crate::models::CreateSourceRequest> = drafts
         .into_iter()
         .map(|r| crate::models::CreateSourceRequest {
             title: r.title,
@@ -102,44 +71,9 @@ pub async fn start_research(
         .collect::<Vec<_>>()
         .join("\n---\n");
 
-    let kp_prompt = truncate_chars(
-        &format!(
-            "从以下关于「{}」的内容中提取主要知识点。\n\n{}\n\n\
-返回 JSON 对象，格式严格为：\
-{{\"items\":[{{\"title\":\"...\",\"summary\":\"一句话\",\"content\":\"2-3段详细说明\",\"tags\":[\"...\"]}}]}}",
-            topic, all_content
-        ),
-        MAX_PROMPT_CHARS,
-    );
-    let kp_response = llm
-        .chat_json(
-            "You are a knowledge extraction assistant. Always reply with a valid JSON object only.",
-            &kp_prompt,
-        )
+    let kp_reqs = crate::ai::extract::extract_knowledge_points(extract_config, &topic, &all_content)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-
-    #[derive(serde::Deserialize)]
-    struct KpEnvelope {
-        items: Vec<CreateKnowledgePointRequest>,
-    }
-
-    let kp_json = extract_json_payload(&kp_response);
-    let kp_reqs: Vec<CreateKnowledgePointRequest> =
-        if let Ok(env) = serde_json::from_str::<KpEnvelope>(kp_json) {
-            env.items
-        } else {
-            serde_json::from_str(kp_json).map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!(
-                        "Parse KPs: {} | {}",
-                        e,
-                        kp_json.chars().take(200).collect::<String>()
-                    ),
-                )
-            })?
-        };
 
     let plan_req = CreateLearningPlanRequest {
         title: topic.clone(),

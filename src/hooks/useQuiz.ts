@@ -1,7 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { QuizQuestion, QuizResult } from "../types";
 import { api } from "../api/client";
-import { formatApiError } from "../utils/errors";
+import { formatApiError, isAbortError } from "../utils/errors";
 import { notifyDataChanged } from "../utils/events";
 
 export function useQuiz(kpId: string | null) {
@@ -10,40 +10,59 @@ export function useQuiz(kpId: string | null) {
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, [kpId]);
 
   const loadQuestions = useCallback(async () => {
     if (!kpId) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setLoading(true);
     setError(null);
     try {
-      let qs = await api.quiz.getByKp(kpId);
+      let qs = await api.quiz.getByKp(kpId, ac.signal);
       if (qs.length === 0) {
-        qs = await api.ai.generateQuiz(kpId, 3);
+        qs = await api.ai.generateQuiz(kpId, 3, ac.signal);
       }
+      if (ac.signal.aborted) return;
       setQuestions(qs);
       setCurrentIndex(0);
       setResult(null);
     } catch (err) {
+      if (isAbortError(err)) return;
       setError(formatApiError(err));
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
   }, [kpId]);
 
   const submitAnswer = useCallback(async (answer: string) => {
     const q = questions[currentIndex];
     if (!q) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setLoading(true);
     setError(null);
     try {
-      const res = await api.quiz.submit(q.id, answer);
+      const res = await api.quiz.submit(q.id, answer, ac.signal);
+      if (ac.signal.aborted) return;
       setResult(res);
-      await api.ai.updateMastery(q.kp_id, res.is_correct);
-      notifyDataChanged();
+      await api.ai.updateMastery(q.kp_id, res.is_correct, ac.signal);
+      if (!ac.signal.aborted) notifyDataChanged();
     } catch (err) {
+      if (isAbortError(err)) return;
       setError(formatApiError(err));
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
   }, [questions, currentIndex]);
 

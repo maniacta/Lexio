@@ -32,6 +32,17 @@ pub fn get_relations_for_kp(db: &Database, kp_id: &str) -> Result<Vec<Relation>,
     Ok(relations)
 }
 
+pub fn delete_relation(db: &Database, id: &str) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let n = conn
+        .execute("DELETE FROM relations WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    if n == 0 {
+        return Err("Relation not found".into());
+    }
+    Ok(())
+}
+
 fn relation_from_row(row: &rusqlite::Row) -> rusqlite::Result<Relation> {
     Ok(Relation {
         id: row.get(0)?,

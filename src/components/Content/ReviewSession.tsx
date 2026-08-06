@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { QuizQuestion, ReviewResult } from "../../types";
 import { api } from "../../api/client";
 import { notifyDataChanged } from "../../utils/events";
+import { isAbortError } from "../../utils/errors";
 import QuizCard from "./QuizCard";
 
 interface Props {
@@ -27,24 +28,36 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
   onCompleteRef.current = onComplete;
   const kpIdsKey = kpIds.join(",");
   const completedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   const fetchQuestion = useCallback(async (kpId: string) => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setLoading(true);
     setError(null);
     setQuestion(null);
     setResult(null);
     try {
-      const kp = await api.knowledge.get(kpId);
+      const kp = await api.knowledge.get(kpId, ac.signal);
+      if (ac.signal.aborted) return;
       setKpTitle(kp.title);
 
-      const existingQuestions = await api.quiz.getByKp(kpId);
+      const existingQuestions = await api.quiz.getByKp(kpId, ac.signal);
+      if (ac.signal.aborted) return;
       const unused = existingQuestions.filter((q) => !usedQuestionIds.current.has(q.id));
       let q: QuizQuestion;
 
       if (unused.length > 0) {
         q = unused[Math.floor(Math.random() * unused.length)];
       } else {
-        const generated = await api.ai.generateQuiz(kpId, 1);
+        const generated = await api.ai.generateQuiz(kpId, 1, ac.signal);
+        if (ac.signal.aborted) return;
         if (generated.length === 0) throw new Error("无法生成题目");
         q = generated[0];
       }
@@ -52,12 +65,12 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
       usedQuestionIds.current.add(q.id);
       setQuestion(q);
     } catch (e: unknown) {
+      if (isAbortError(e)) return;
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
       setQuestion(null);
-      // Stay on current index — do not auto-mark wrong or skip
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
   }, []);
 
@@ -78,11 +91,17 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
 
   const submitAnswer = async (answer: string) => {
     if (!question) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setLoading(true);
     setError(null);
     try {
-      const res = await api.quiz.submit(question.id, answer);
-      const mastery = await api.ai.updateMastery(question.kp_id, res.is_correct);
+      const res = await api.quiz.submit(question.id, answer, ac.signal);
+      if (ac.signal.aborted) return;
+      const mastery = await api.ai.updateMastery(question.kp_id, res.is_correct, ac.signal);
+      if (ac.signal.aborted) return;
       notifyDataChanged();
       setResult({
         user_answer: answer,
@@ -91,9 +110,10 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
         next_review_at: mastery.next_review_at,
       });
     } catch (e: unknown) {
+      if (isAbortError(e)) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
   };
 

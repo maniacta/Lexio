@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import { api } from "../../api/client";
-import type { KnowledgePoint } from "../../types";
+import type { KnowledgePoint, Relation } from "../../types";
 import { useQuiz } from "../../hooks/useQuiz";
+import { formatApiError, isAbortError } from "../../utils/errors";
 import QuizCard from "./QuizCard";
 import "./LearningView.css";
 
@@ -11,8 +12,16 @@ interface Props {
   kpId: string | null;
 }
 
+const RELATION_LABEL: Record<string, string> = {
+  prerequisite: "前置",
+  related: "相关",
+  extension: "延伸",
+};
+
 export default function LearningView({ kpId }: Props) {
   const [kp, setKp] = useState<KnowledgePoint | null>(null);
+  const [relations, setRelations] = useState<Relation[]>([]);
+  const [relatedTitles, setRelatedTitles] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const quiz = useQuiz(kpId);
@@ -20,27 +29,48 @@ export default function LearningView({ kpId }: Props) {
   useEffect(() => {
     if (!kpId) {
       setKp(null);
+      setRelations([]);
+      setRelatedTitles({});
       setLoadError(null);
       return;
     }
-    // Clear immediately so previous KP content never flashes
     setKp(null);
+    setRelations([]);
+    setRelatedTitles({});
     setLoadError(null);
     setShowQuiz(false);
-    let cancelled = false;
-    api.knowledge
-      .get(kpId)
-      .then((data) => {
-        if (!cancelled) setKp(data);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) {
-          setLoadError(e instanceof Error ? e.message : String(e));
+
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const data = await api.knowledge.get(kpId, ac.signal);
+        if (ac.signal.aborted) return;
+        setKp(data);
+
+        const rels = await api.knowledge.listRelations(kpId, ac.signal);
+        if (ac.signal.aborted) return;
+        setRelations(rels);
+
+        const otherIds = [
+          ...new Set(
+            rels.map((r) => (r.from_kp_id === kpId ? r.to_kp_id : r.from_kp_id))
+          ),
+        ];
+        if (otherIds.length > 0) {
+          const others = await api.knowledge.list(undefined, otherIds, ac.signal);
+          if (ac.signal.aborted) return;
+          const map: Record<string, string> = {};
+          for (const o of others) map[o.id] = o.title;
+          setRelatedTitles(map);
         }
-      });
-    return () => {
-      cancelled = true;
-    };
+      } catch (e: unknown) {
+        if (!isAbortError(e) && !ac.signal.aborted) {
+          setLoadError(formatApiError(e));
+        }
+      }
+    })();
+
+    return () => ac.abort();
   }, [kpId]);
 
   if (!kpId) {
@@ -81,6 +111,24 @@ export default function LearningView({ kpId }: Props) {
       <div className="learning-content">
         <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{kp.content}</ReactMarkdown>
       </div>
+
+      {relations.length > 0 && (
+        <div className="learning-relations">
+          <h3>关联知识点</h3>
+          <ul>
+            {relations.map((r) => {
+              const otherId = r.from_kp_id === kpId ? r.to_kp_id : r.from_kp_id;
+              const label = RELATION_LABEL[r.relation_type] ?? r.relation_type;
+              return (
+                <li key={r.id}>
+                  <span className="relation-type">{label}</span>
+                  {relatedTitles[otherId] ?? otherId}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       <div className="learning-actions">
         {!showQuiz ? (

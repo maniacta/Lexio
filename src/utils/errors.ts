@@ -1,4 +1,7 @@
 export function formatApiError(err: unknown): string {
+  if (isAbortError(err)) {
+    return "请求已取消";
+  }
   const raw = err instanceof Error ? err.message : String(err);
 
   if (/MISSING_API_KEY/i.test(raw) || /填写 API Key/i.test(raw)) {
@@ -29,6 +32,15 @@ export function formatApiError(err: unknown): string {
   // Strip noisy "API error 500: " prefix when body already explains
   const cleaned = raw.replace(/^API error \d+:\s*/i, "").trim();
   return cleaned ? `出错了：${cleaned}` : "出错了，请稍后重试。";
+}
+
+export function isAbortError(err: unknown): boolean {
+  return (
+    (typeof DOMException !== "undefined" &&
+      err instanceof DOMException &&
+      err.name === "AbortError") ||
+    (err instanceof Error && err.name === "AbortError")
+  );
 }
 
 /** True when the default (or any) provider has no API key configured. */

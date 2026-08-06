@@ -1,20 +1,27 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Source } from "../types";
 import { api } from "../api/client";
+import { isAbortError } from "../utils/errors";
 
 export function useSources() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
+  const abortRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
     setLoading(true);
     try {
-      const data = await api.sources.list();
-      setSources(data);
+      const data = await api.sources.list(undefined, undefined, ac.signal);
+      if (!ac.signal.aborted) setSources(data);
     } catch (err) {
-      console.error("Failed to load sources:", err);
+      if (!isAbortError(err)) {
+        console.error("Failed to load sources:", err);
+      }
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
   }, []);
 
@@ -25,7 +32,10 @@ export function useSources() {
     );
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    return () => abortRef.current?.abort();
+  }, [refresh]);
 
   return { sources, loading, refresh, toggleHidden };
 }

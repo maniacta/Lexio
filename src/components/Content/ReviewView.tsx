@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { ReviewItem, ReviewResult } from "../../types";
 import { api } from "../../api/client";
+import { isAbortError } from "../../utils/errors";
 import ReviewList from "./ReviewList";
 import ReviewSession from "./ReviewSession";
 import ReviewSummary from "./ReviewSummary";
@@ -15,22 +16,29 @@ export default function ReviewView() {
   const [results, setResults] = useState<ReviewResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const loadItems = useCallback(async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
     setLoading(true);
     setError(null);
     try {
-      const data = await api.learning.getDueReviewsWithKp();
-      setItems(data);
+      const data = await api.learning.getDueReviewsWithKp(ac.signal);
+      if (!ac.signal.aborted) setItems(data);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (!isAbortError(e)) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadItems();
+    return () => abortRef.current?.abort();
   }, [loadItems]);
 
   const handleStart = (ids: string[]) => {

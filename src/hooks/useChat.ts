@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { ChatMessage, AiResearchResult, LearningPlan } from "../types";
 import { api } from "../api/client";
-import { formatApiError } from "../utils/errors";
+import { formatApiError, isAbortError } from "../utils/errors";
 import { notifyDataChanged } from "../utils/events";
 
 export function useChat() {
@@ -9,28 +9,31 @@ export function useChat() {
   const [loading, setLoading] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<LearningPlan | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const researchAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    const ac = new AbortController();
     (async () => {
       try {
-        const plans = await api.learning.listPlans();
-        if (cancelled) return;
+        const plans = await api.learning.listPlans(ac.signal);
+        if (ac.signal.aborted) return;
         if (plans.length > 0) {
-          // Prefer the most recently created plan
           const latest = [...plans].sort((a, b) =>
             (b.created_at ?? "").localeCompare(a.created_at ?? "")
           )[0];
           setCurrentPlan(latest);
         }
-      } catch {
-        // Ignore hydrate errors — chat still works for new topics
+      } catch (e) {
+        if (!isAbortError(e)) {
+          // Ignore hydrate errors — chat still works for new topics
+        }
       } finally {
-        if (!cancelled) setHydrated(true);
+        if (!ac.signal.aborted) setHydrated(true);
       }
     })();
     return () => {
-      cancelled = true;
+      ac.abort();
+      researchAbort.current?.abort();
     };
   }, []);
 
@@ -40,13 +43,16 @@ export function useChat() {
       setMessages((prev) => [...prev, userMsg]);
       setLoading(true);
 
+      researchAbort.current?.abort();
+      const ac = new AbortController();
+      researchAbort.current = ac;
+
       try {
         const trimmed = content.trim();
         const wantsNewTopic =
           /^(新主题|换个主题|重新研究|开新主题)[:：\s]*/i.test(trimmed) ||
           trimmed.toLowerCase().startsWith("new topic:");
 
-        // First message without an active plan, or explicit new-topic request → research
         if (!currentPlan || wantsNewTopic) {
           const topic = wantsNewTopic
             ? trimmed
@@ -55,7 +61,8 @@ export function useChat() {
                 .trim() || trimmed
             : trimmed;
 
-          const result: AiResearchResult = await api.ai.startResearch(topic);
+          const result: AiResearchResult = await api.ai.startResearch(topic, ac.signal);
+          if (ac.signal.aborted) return;
           notifyDataChanged();
 
           const botMsg: ChatMessage = {
@@ -81,13 +88,14 @@ ${result.knowledge_points.map((kp, i) => `${i + 1}. ${kp.title} — ${kp.summary
           setMessages((prev) => [...prev, botMsg]);
         }
       } catch (err) {
+        if (isAbortError(err)) return;
         const errMsg: ChatMessage = {
           role: "assistant",
           content: formatApiError(err),
         };
         setMessages((prev) => [...prev, errMsg]);
       } finally {
-        setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
     },
     [currentPlan]

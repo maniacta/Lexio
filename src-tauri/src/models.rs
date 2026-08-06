@@ -58,6 +58,12 @@ pub struct Relation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateRelationRequest {
+    pub to_kp_id: String,
+    pub relation_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuizQuestion {
     pub id: String,
     pub kp_id: String,

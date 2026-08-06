@@ -29,6 +29,19 @@ export interface KnowledgePoint {
   created_at: string;
 }
 
+export interface Relation {
+  id: string;
+  from_kp_id: string;
+  to_kp_id: string;
+  relation_type: "prerequisite" | "related" | "extension" | string;
+  created_at: string;
+}
+
+export interface CreateRelationRequest {
+  to_kp_id: string;
+  relation_type: "prerequisite" | "related" | "extension";
+}
+
 export interface QuizQuestion {
   id: string;
   kp_id: string;

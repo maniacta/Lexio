@@ -6,3 +6,4 @@ pub mod ai_routes;
 pub mod settings;
 pub mod blocking;
 pub mod auth;
+pub mod relation;
