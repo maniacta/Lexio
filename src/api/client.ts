@@ -1,4 +1,4 @@
-import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem } from "../types";
+import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem, ProviderKindInfo } from "../types";
 
 // Vite proxy forwards /api/* to backend on localhost:3001
 const API_BASE = "/api";
@@ -90,6 +90,8 @@ export const api = {
   settings: {
     getAll: () => request<SettingsData>("/settings"),
     listProviders: () => request<ProviderWithModels[]>("/settings/providers"),
+    listProviderKinds: () =>
+      request<ProviderKindInfo[]>("/settings/provider-kinds"),
     createProvider: (data: CreateProviderRequest) =>
       request<ModelProvider>("/settings/providers", { method: "POST", body: JSON.stringify(data) }),
     updateProvider: (id: string, data: UpdateProviderRequest) =>

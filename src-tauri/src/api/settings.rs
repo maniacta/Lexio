@@ -186,7 +186,8 @@ pub async fn test_connection(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let config = repo::settings::resolve_for_test(state.db, &req.provider_id, &req.model_name)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-    let client = crate::ai::llm::LlmClient::new(config);
+    let client = crate::ai::create_provider(config)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
     match client.chat("You are a helpful assistant.", "Say 'hello' in one word.").await {
         Ok(resp) => Ok(Json(serde_json::to_value(&TestConnectionResponse {
             ok: true,
@@ -197,4 +198,8 @@ pub async fn test_connection(
             message: e,
         }).unwrap())),
     }
+}
+
+pub async fn list_provider_kinds() -> Json<serde_json::Value> {
+    Json(serde_json::to_value(crate::ai::list_provider_kinds()).unwrap())
 }

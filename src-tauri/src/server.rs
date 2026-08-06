@@ -26,6 +26,7 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
         .route("/api/ai/update-mastery", axum::routing::post(ai_routes::update_mastery))
         // Settings
         .route("/api/settings", get(settings::get_settings))
+        .route("/api/settings/provider-kinds", get(settings::list_provider_kinds))
         .route("/api/settings/providers",
             get(settings::list_providers).post(settings::create_provider))
         .route("/api/settings/providers/{id}",

@@ -45,6 +45,8 @@ pub fn run() {
             // Initialize settings presets (idempotent)
             repo::settings::init_presets(db)
                 .expect("Failed to initialize settings presets");
+            repo::settings::migrate_deepseek_models(db)
+                .expect("Failed to migrate DeepSeek models");
 
             let app_state: &'static api::ai_routes::AppState =
                 Box::leak(Box::new(api::ai_routes::AppState { db }));

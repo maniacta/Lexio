@@ -1,5 +1,5 @@
 use axum::{extract::State, http::StatusCode, Json};
-use crate::ai::llm::LlmClient;
+use crate::ai::{create_provider, extract_json_payload};
 use crate::db::Database;
 use crate::models::{AiStartResearchRequest, CreateKnowledgePointRequest, CreateLearningPlanRequest};
 use crate::repo::{self, source, knowledge};
@@ -13,7 +13,7 @@ pub async fn start_research(
     State(state): State<&'static AppState>,
     Json(req): Json<AiStartResearchRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
-    // Resolve LLM config for chat task
+    // Resolve LLM config for chat task (DeepSeek Chat Completions)
     let llm_config = repo::settings::resolve_llm_config(state.db, "chat")
         .map_err(|e| {
             let code = if e.contains("MISSING_API_KEY") {
@@ -23,24 +23,36 @@ pub async fn start_research(
             };
             (code, e)
         })?;
-    let llm = LlmClient::new(llm_config);
+    let llm = create_provider(llm_config)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
-    // Step 1: AI searches web for sources (stub: use LLM to generate search results)
+    // Step 1: AI proposes learning resources as JSON (thinking disabled for speed)
     let search_prompt = format!(
-        "You are helping a user learn about: {}. \
-        Please list 3 high-quality learning resources about this topic (titles and brief descriptions). \
-        Return as JSON array with fields: title, description.",
+        "用户想学习主题：{}。\n\
+请列出 3 份高质量学习资料。\n\
+返回 JSON 对象，格式严格为：{{\"items\":[{{\"title\":\"...\",\"description\":\"...\"}}]}}",
         req.topic
     );
-    let response = llm.chat("You are a research assistant.", &search_prompt).await
+    let response = llm
+        .chat_json(
+            "You are a research assistant. Always reply with a valid JSON object only.",
+            &search_prompt,
+        )
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Parse AI response as source suggestions
-    let json_str = extract_json(&response);
     #[derive(serde::Deserialize)]
     struct SearchResult { title: String, description: String }
-    let results: Vec<SearchResult> = serde_json::from_str(json_str)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Parse error: {}", e)))?;
+    #[derive(serde::Deserialize)]
+    struct SearchEnvelope { items: Vec<SearchResult> }
+
+    let json_str = extract_json_payload(&response);
+    let results: Vec<SearchResult> = if let Ok(env) = serde_json::from_str::<SearchEnvelope>(json_str) {
+        env.items
+    } else {
+        serde_json::from_str(json_str)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Parse error: {} | {}", e, json_str.chars().take(200).collect::<String>())))?
+    };
 
     // Save as sources
     let mut sources = Vec::new();
@@ -65,16 +77,29 @@ pub async fn start_research(
         .join("\n---\n");
 
     let kp_prompt = format!(
-        "Extract the main knowledge points from this content about '{}'.\n\n{}\n\n\
-        Return ONLY a JSON array of objects with fields: title, summary (one sentence), content (2-3 paragraphs), tags (array of strings).",
+        "从以下关于「{}」的内容中提取主要知识点。\n\n{}\n\n\
+返回 JSON 对象，格式严格为：\
+{{\"items\":[{{\"title\":\"...\",\"summary\":\"一句话\",\"content\":\"2-3段详细说明\",\"tags\":[\"...\"]}}]}}",
         req.topic, all_content
     );
-    let kp_response = llm.chat("You are a knowledge extraction assistant. Return JSON only.", &kp_prompt).await
+    let kp_response = llm
+        .chat_json(
+            "You are a knowledge extraction assistant. Always reply with a valid JSON object only.",
+            &kp_prompt,
+        )
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    let kp_json = extract_json(&kp_response);
-    let kp_reqs: Vec<CreateKnowledgePointRequest> = serde_json::from_str(kp_json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Parse KPs: {}", e)))?;
+    #[derive(serde::Deserialize)]
+    struct KpEnvelope { items: Vec<CreateKnowledgePointRequest> }
+
+    let kp_json = extract_json_payload(&kp_response);
+    let kp_reqs: Vec<CreateKnowledgePointRequest> = if let Ok(env) = serde_json::from_str::<KpEnvelope>(kp_json) {
+        env.items
+    } else {
+        serde_json::from_str(kp_json)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Parse KPs: {} | {}", e, kp_json.chars().take(200).collect::<String>())))?
+    };
 
     let mut kps = Vec::new();
     for kp_req in &kp_reqs {
@@ -176,17 +201,4 @@ pub async fn update_mastery(
     repo::learning::upsert_mastery(state.db, &record)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(serde_json::to_value(&record).unwrap()))
-}
-
-fn extract_json(response: &str) -> &str {
-    if let Some(start) = response.find("```json") {
-        let after = &response[start + 7..];
-        if let Some(end) = after.find("```") { &after[..end] } else { after }
-    } else if let Some(start) = response.find('[') {
-        &response[start..]
-    } else if let Some(start) = response.find('{') {
-        &response[start..]
-    } else {
-        response
-    }
 }

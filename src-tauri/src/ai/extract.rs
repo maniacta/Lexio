@@ -1,4 +1,4 @@
-use crate::ai::llm::{LlmClient, LlmConfig};
+use crate::ai::{create_provider, extract_json_payload, LlmConfig};
 use crate::models::CreateKnowledgePointRequest;
 
 pub async fn extract_knowledge_points(
@@ -6,31 +6,28 @@ pub async fn extract_knowledge_points(
     source_title: &str,
     source_content: &str,
 ) -> Result<Vec<CreateKnowledgePointRequest>, String> {
-    let system_prompt = "You are a knowledge extraction assistant. Extract key concepts as structured knowledge points from the given content. Return JSON only.";
+    let system_prompt = "You are a knowledge extraction assistant. Always reply with a valid JSON object only.";
     let user_prompt = format!(
-        "Extract the main knowledge points from this content.\n\
-        Title: {}\n\nContent:\n{}\n\n\
-        Return ONLY a JSON array of objects with fields: title, summary (one sentence), content (detailed explanation 2-3 paragraphs), tags (array of strings).",
+        "从以下内容提取主要知识点。\n\
+Title: {}\n\nContent:\n{}\n\n\
+返回 JSON 对象，格式严格为：\
+{{\"items\":[{{\"title\":\"...\",\"summary\":\"一句话\",\"content\":\"2-3段详细说明\",\"tags\":[\"...\"]}}]}}",
         source_title, source_content
     );
 
-    let llm = LlmClient::new(config);
-    let response = llm.chat(system_prompt, &user_prompt).await?;
-    // Extract JSON from response (may be wrapped in markdown code block)
-    let json_str = if let Some(start) = response.find("```json") {
-        let after = &response[start + 7..];
-        if let Some(end) = after.find("```") {
-            &after[..end]
-        } else {
-            after
-        }
-    } else if let Some(start) = response.find('[') {
-        &response[start..]
-    } else {
-        &response
-    };
+    let llm = create_provider(config)?;
+    let response = llm.chat_json(system_prompt, &user_prompt).await?;
+    let json_str = extract_json_payload(&response);
 
-    let kps: Vec<CreateKnowledgePointRequest> = serde_json::from_str(json_str.trim())
-        .map_err(|e| format!("Failed to parse knowledge points: {}. Raw: {}", e, json_str))?;
-    Ok(kps)
+    #[derive(serde::Deserialize)]
+    struct KpEnvelope {
+        items: Vec<CreateKnowledgePointRequest>,
+    }
+
+    if let Ok(env) = serde_json::from_str::<KpEnvelope>(json_str) {
+        return Ok(env.items);
+    }
+
+    serde_json::from_str(json_str.trim())
+        .map_err(|e| format!("Failed to parse knowledge points: {}. Raw: {}", e, json_str))
 }

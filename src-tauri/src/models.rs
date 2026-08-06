@@ -42,7 +42,9 @@ pub struct CreateKnowledgePointRequest {
     pub title: String,
     pub summary: String,
     pub content: String,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub source_ids: Vec<String>,
 }
 
@@ -156,18 +158,18 @@ pub struct ModelProvider {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateProviderRequest {
-    pub name: String,
-    pub base_url: String,
+    /// Vendor kind: deepseek | openai | anthropic
+    pub kind: String,
     pub api_key: String,
-    pub api_format: Option<String>,
+    pub base_url: Option<String>,
+    pub set_default: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateProviderRequest {
-    pub name: String,
+    pub name: Option<String>,
     pub base_url: String,
     pub api_key: Option<String>,
-    pub api_format: Option<String>,
     pub is_default: Option<bool>,
 }
 

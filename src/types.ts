@@ -93,6 +93,7 @@ export interface ModelProvider {
   name: string;
   base_url: string;
   api_key: string;
+  /** Vendor kind: deepseek | openai | anthropic */
   api_format: string;
   is_preset: boolean;
   is_default: boolean;
@@ -112,6 +113,19 @@ export interface ProviderWithModels extends ModelProvider {
   models: ProviderModel[];
 }
 
+export interface ProviderKindInfo {
+  kind: string;
+  display_name: string;
+  default_base_url: string;
+  implemented: boolean;
+  models: {
+    model_name: string;
+    temperature: number;
+    max_tokens: number;
+    is_default: boolean;
+  }[];
+}
+
 export interface TaskModelEntry {
   model_id: string | null;
   resolved: string | null;
@@ -124,17 +138,16 @@ export interface SettingsData {
 }
 
 export interface CreateProviderRequest {
-  name: string;
-  base_url: string;
+  kind: string;
   api_key: string;
-  api_format?: string;
+  base_url?: string;
+  set_default?: boolean;
 }
 
 export interface UpdateProviderRequest {
-  name: string;
+  name?: string;
   base_url: string;
   api_key?: string;
-  api_format?: string;
   is_default?: boolean;
 }
 
