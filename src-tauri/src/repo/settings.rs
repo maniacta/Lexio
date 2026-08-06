@@ -149,10 +149,8 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
 
 pub fn delete_provider(db: &Database, id: &str) -> Result<(), String> {
     let p = get_provider(db, id)?.ok_or("Provider not found")?;
-    if p.is_preset {
-        return Err("Cannot delete preset provider".to_string());
-    }
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
     // Clean up task_models referencing models of this provider
     conn.execute(
         "DELETE FROM task_models WHERE model_id IN (SELECT id FROM provider_models WHERE provider_id = ?1)",
@@ -162,6 +160,22 @@ pub fn delete_provider(db: &Database, id: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM model_providers WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
+
+    // If we removed the default provider, promote another one when any remain
+    if p.is_default {
+        let next: Result<String, _> = conn.query_row(
+            "SELECT id FROM model_providers ORDER BY created_at ASC LIMIT 1",
+            [],
+            |r| r.get(0),
+        );
+        if let Ok(new_default_id) = next {
+            conn.execute(
+                "UPDATE model_providers SET is_default = 1 WHERE id = ?1",
+                [&new_default_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
 }
 
@@ -231,33 +245,41 @@ pub fn update_model(db: &Database, provider_id: &str, model_id: &str, req: &Upda
 
 pub fn delete_model(db: &Database, provider_id: &str, model_id: &str) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    // Check if referenced by task_models
-    let ref_count: i32 = conn.query_row(
-        "SELECT COUNT(*) FROM task_models WHERE model_id = ?1", [model_id], |r| r.get(0)
-    ).map_err(|e| e.to_string())?;
-    if ref_count > 0 {
-        return Err("Model is referenced by one or more task assignments. Remove the assignments first.".to_string());
-    }
-    // Don't delete the last model of a provider
-    let count: i32 = conn.query_row(
-        "SELECT COUNT(*) FROM provider_models WHERE provider_id = ?1", [provider_id], |r| r.get(0)
-    ).map_err(|e| e.to_string())?;
-    if count <= 1 {
-        return Err("Cannot delete the only model of a provider.".to_string());
-    }
-    // Check if we're deleting the default model
-    let is_default: i32 = conn.query_row(
-        "SELECT is_default FROM provider_models WHERE id = ?1 AND provider_id = ?2",
-        [model_id, provider_id], |r| r.get(0)
-    ).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM provider_models WHERE id = ?1 AND provider_id = ?2", [model_id, provider_id])
+    // Clear task assignments that pointed at this model
+    conn.execute("DELETE FROM task_models WHERE model_id = ?1", [model_id])
         .map_err(|e| e.to_string())?;
+
+    let is_default: i32 = conn
+        .query_row(
+            "SELECT is_default FROM provider_models WHERE id = ?1 AND provider_id = ?2",
+            [model_id, provider_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let deleted = conn
+        .execute(
+            "DELETE FROM provider_models WHERE id = ?1 AND provider_id = ?2",
+            [model_id, provider_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if deleted == 0 {
+        return Err("Model not found".to_string());
+    }
+
     if is_default != 0 {
-        // Promote another model to default
-        conn.execute(
-            "UPDATE provider_models SET is_default = 1 WHERE provider_id = ?1 AND id = (SELECT id FROM provider_models WHERE provider_id = ?1 LIMIT 1)",
+        let next: Result<String, _> = conn.query_row(
+            "SELECT id FROM provider_models WHERE provider_id = ?1 LIMIT 1",
             [provider_id],
-        ).map_err(|e| e.to_string())?;
+            |r| r.get(0),
+        );
+        if let Ok(next_id) = next {
+            conn.execute(
+                "UPDATE provider_models SET is_default = 1 WHERE id = ?1 AND provider_id = ?2",
+                rusqlite::params![next_id, provider_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
     }
     Ok(())
 }

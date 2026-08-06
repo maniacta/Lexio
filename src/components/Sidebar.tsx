@@ -25,6 +25,11 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
 
   return (
     <aside className="sidebar">
+      <div className="sidebar-brand">
+        <h1 className="sidebar-brand-title">Lexio</h1>
+        <p className="sidebar-brand-sub">学习教练</p>
+      </div>
+
       <button
         type="button"
         className={`sidebar-chat-btn ${currentView === "chat" ? "active" : ""}`}
@@ -32,40 +37,49 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
       >
         聊天
       </button>
+
       <div className="sidebar-tabs">
         <button
+          type="button"
           className={`sidebar-tab ${tab === "knowledge" ? "active" : ""}`}
           onClick={() => setTab("knowledge")}
         >
           知识点
         </button>
         <button
+          type="button"
           className={`sidebar-tab ${tab === "sources" ? "active" : ""}`}
           onClick={() => setTab("sources")}
         >
           资料
         </button>
       </div>
-      {tab === "knowledge" && <KpList onSelect={onSelectKp} selectedId={selectedKpId} />}
-      {tab === "sources" && <SourceList />}
+
+      <div className="sidebar-scroll">
+        {tab === "knowledge" && <KpList onSelect={onSelectKp} selectedId={selectedKpId} />}
+        {tab === "sources" && <SourceList />}
+      </div>
+
       <button
+        type="button"
         className={`sidebar-tab review ${currentView === "review" ? "active" : ""}`}
         onClick={() => onNavigate("review")}
       >
-        复习
+        <span>复习</span>
         {dueCount > 0 && <span className="review-badge">{dueCount}</span>}
       </button>
+
       <div className="sidebar-footer">
         <button
+          type="button"
           className={`sidebar-settings-btn ${currentView === "settings" ? "active" : ""}`}
           onClick={() => onNavigate("settings")}
           title="设置"
+          aria-label="设置"
         >
           ⚙
         </button>
-        <span className={`sidebar-mode-badge ${runMode}`}>
-          {platform}
-        </span>
+        <span className={`sidebar-mode-badge ${runMode}`}>{platform}</span>
         <span className="sidebar-version">v0.1.0</span>
       </div>
     </aside>

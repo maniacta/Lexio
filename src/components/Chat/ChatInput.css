@@ -1,35 +1,53 @@
 .chat-input {
   display: flex;
+  align-items: center;
   gap: 10px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
-  background: var(--bg-primary, #fff);
+  padding: 16px 28px 22px;
+  background: linear-gradient(to top, var(--color-bg) 55%, transparent);
 }
 
 .chat-input input {
   flex: 1;
-  padding: 10px 16px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 8px;
-  font-size: 14px;
+  height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 15px;
   outline: none;
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--duration) var(--ease-apple),
+    box-shadow var(--duration) var(--ease-apple);
+}
+
+.chat-input input::placeholder {
+  color: var(--color-text-muted);
 }
 
 .chat-input input:focus {
-  border-color: var(--accent-color, #2563eb);
+  border-color: rgba(0, 113, 227, 0.45);
+  box-shadow: 0 0 0 4px var(--color-accent-soft), var(--shadow-sm);
 }
 
 .chat-input button {
-  padding: 10px 20px;
-  background: var(--accent-color, #2563eb);
-  color: white;
+  height: 44px;
+  padding: 0 20px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 14px;
+}
+
+.chat-input button:hover:not(:disabled) {
+  background: var(--color-accent-hover);
 }
 
 .chat-input button:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }

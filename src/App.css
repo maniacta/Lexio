@@ -10,10 +10,12 @@ html, body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.47059;
+  letter-spacing: -0.016em;
+  font-weight: 400;
   color: var(--color-text-primary);
   background: var(--color-bg);
   -webkit-font-smoothing: antialiased;
@@ -24,65 +26,146 @@ body {
   height: 100%;
 }
 
-/* ── Design tokens ── */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+/* ── Apple-inspired design tokens ── */
 :root,
 html.theme-light {
-  /* Colors */
-  --color-text-primary: #1a1a2e;
-  --color-text-secondary: #6c757d;
-  --color-text-muted: #adb5bd;
-  --color-bg: #f8f9fa;
+  --color-text-primary: #1d1d1f;
+  --color-text-secondary: #6e6e73;
+  --color-text-muted: #86868b;
+  --color-bg: #f5f5f7;
+  --color-bg-elevated: #ffffff;
   --color-surface: #ffffff;
-  --color-border: #e9ecef;
-  --color-accent: #7c6ff7;
-  --color-accent-hover: #6a5ce0;
-  --color-success: #22c55e;
-  --color-sidebar: #1a1a2e;
-  --color-sidebar-text: #b8b8d0;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
-  --color-sidebar-active: rgba(124, 111, 247, 0.15);
+  --color-surface-secondary: #fbfbfd;
+  --color-fill: rgba(0, 0, 0, 0.04);
+  --color-fill-hover: rgba(0, 0, 0, 0.06);
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-separator: rgba(0, 0, 0, 0.12);
+  --color-accent: #0071e3;
+  --color-accent-hover: #0077ed;
+  --color-accent-soft: rgba(0, 113, 227, 0.1);
+  --color-success: #34c759;
+  --color-danger: #ff3b30;
+  --color-warning: #ff9500;
 
-  /* Spacing scale */
+  --color-sidebar: rgba(246, 246, 246, 0.92);
+  --color-sidebar-solid: #f6f6f6;
+  --color-sidebar-text: #1d1d1f;
+  --color-sidebar-muted: #6e6e73;
+  --color-sidebar-hover: rgba(0, 0, 0, 0.05);
+  --color-sidebar-active: rgba(0, 113, 227, 0.12);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 980px;
+
   --spacing-xs: 8px;
   --spacing-sm: 12px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
+  --sidebar-width: 260px;
 
-  /* Sidebar */
-  --sidebar-width: 240px;
+  --ease-apple: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --duration: 0.22s;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.theme-light):not(.theme-dark) {
-    --color-text-primary: #e0e0f0;
-    --color-text-secondary: #9ca3af;
-    --color-text-muted: #6b7280;
-    --color-bg: #111118;
-    --color-surface: #1a1a26;
-    --color-border: #2a2a3a;
-    --color-accent: #8b7cf7;
-    --color-accent-hover: #9d8ff8;
-    --color-success: #34d399;
-    --color-sidebar: #0e0e1a;
-    --color-sidebar-text: #9ca3af;
-    --color-sidebar-hover: rgba(255, 255, 255, 0.05);
-    --color-sidebar-active: rgba(139, 124, 247, 0.15);
+    --color-text-primary: #f5f5f7;
+    --color-text-secondary: #a1a1a6;
+    --color-text-muted: #6e6e73;
+    --color-bg: #000000;
+    --color-bg-elevated: #1c1c1e;
+    --color-surface: #1c1c1e;
+    --color-surface-secondary: #2c2c2e;
+    --color-fill: rgba(255, 255, 255, 0.08);
+    --color-fill-hover: rgba(255, 255, 255, 0.12);
+    --color-border: rgba(255, 255, 255, 0.1);
+    --color-separator: rgba(255, 255, 255, 0.16);
+    --color-accent: #0a84ff;
+    --color-accent-hover: #409cff;
+    --color-accent-soft: rgba(10, 132, 255, 0.18);
+    --color-success: #30d158;
+    --color-danger: #ff453a;
+    --color-warning: #ff9f0a;
+
+    --color-sidebar: rgba(28, 28, 30, 0.92);
+    --color-sidebar-solid: #1c1c1e;
+    --color-sidebar-text: #f5f5f7;
+    --color-sidebar-muted: #a1a1a6;
+    --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+    --color-sidebar-active: rgba(10, 132, 255, 0.22);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
   }
 }
 
 html.theme-dark {
-  --color-text-primary: #e0e0f0;
-  --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
-  --color-bg: #111118;
-  --color-surface: #1a1a26;
-  --color-border: #2a2a3a;
-  --color-accent: #8b7cf7;
-  --color-accent-hover: #9d8ff8;
-  --color-success: #34d399;
-  --color-sidebar: #0e0e1a;
-  --color-sidebar-text: #9ca3af;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.05);
-  --color-sidebar-active: rgba(139, 124, 247, 0.15);
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #a1a1a6;
+  --color-text-muted: #6e6e73;
+  --color-bg: #000000;
+  --color-bg-elevated: #1c1c1e;
+  --color-surface: #1c1c1e;
+  --color-surface-secondary: #2c2c2e;
+  --color-fill: rgba(255, 255, 255, 0.08);
+  --color-fill-hover: rgba(255, 255, 255, 0.12);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-separator: rgba(255, 255, 255, 0.16);
+  --color-accent: #0a84ff;
+  --color-accent-hover: #409cff;
+  --color-accent-soft: rgba(10, 132, 255, 0.18);
+  --color-success: #30d158;
+  --color-danger: #ff453a;
+  --color-warning: #ff9f0a;
+
+  --color-sidebar: rgba(28, 28, 30, 0.92);
+  --color-sidebar-solid: #1c1c1e;
+  --color-sidebar-text: #f5f5f7;
+  --color-sidebar-muted: #a1a1a6;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-active: rgba(10, 132, 255, 0.22);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Shared Apple-like controls */
+.btn-primary,
+.btn-secondary,
+.btn-sm,
+.chat-setup-btn,
+.chat-input button,
+.quiz-submit-btn,
+.quiz-next-btn,
+.btn-start-quiz {
+  transition:
+    background-color var(--duration) var(--ease-apple),
+    color var(--duration) var(--ease-apple),
+    border-color var(--duration) var(--ease-apple),
+    transform 0.12s var(--ease-apple),
+    opacity var(--duration) var(--ease-apple);
+}
+
+.btn-primary:active,
+.btn-secondary:active,
+.btn-sm:active,
+.chat-setup-btn:active,
+.chat-input button:active,
+.quiz-submit-btn:active,
+.quiz-next-btn:active,
+.btn-start-quiz:active {
+  transform: scale(0.97);
 }

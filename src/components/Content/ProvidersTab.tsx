@@ -67,17 +67,15 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
     }
   };
 
-  const handleDelete = async (id: string, isPreset: boolean) => {
-    if (isPreset) {
-      setTestResult("❌ 预设厂商不可删除");
-      return;
-    }
-    if (!confirm("确定删除此厂商？所有关联模型也将被删除。")) return;
+  const handleDelete = async (id: string) => {
+    if (!confirm("确定删除此厂商？其下所有模型也会被删除。")) return;
     try {
       await api.settings.deleteProvider(id);
+      if (editId === id) cancelEdit();
       onSaved();
       const data = await api.settings.getAll();
       setProviders(data.providers);
+      setTestResult("");
     } catch (e: any) {
       setTestResult(`❌ ${e.message}`);
     }
@@ -158,8 +156,9 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
                 <button className="btn-sm" onClick={() => handleSetDefault(p.id)}>设为默认</button>
               )}
               <button className="btn-sm" onClick={() => startEdit(p)}>编辑</button>
-              <button className="btn-sm btn-danger" onClick={() => handleDelete(p.id, p.is_preset)}
-                disabled={p.is_preset}>删除</button>
+              <button className="btn-sm btn-danger" onClick={() => handleDelete(p.id)}>
+                删除
+              </button>
             </div>
 
             {editId === p.id && (
@@ -183,8 +182,7 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
                           <span>Temp: {m.temperature}</span>
                           <span>Tokens: {m.max_tokens}</span>
                           <button className="btn-sm btn-danger"
-                            onClick={() => handleDeleteModel(editId!, m.id)}
-                            disabled={editProvider.models.length <= 1}>
+                            onClick={() => handleDeleteModel(editId!, m.id)}>
                             删除
                           </button>
                           <button className="btn-sm"

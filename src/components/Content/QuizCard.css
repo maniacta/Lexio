@@ -1,73 +1,134 @@
 .quiz-card {
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 12px;
-  padding: 20px;
-  margin: 12px 0;
+  margin: 14px 0;
+  padding: 20px 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .quiz-type-badge {
   display: inline-block;
-  padding: 2px 10px;
-  background: var(--accent-light, #eef2ff);
-  color: var(--accent-color, #2563eb);
-  border-radius: 12px;
+  margin-bottom: 10px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   font-size: 12px;
-  margin-bottom: 8px;
+  font-weight: 600;
 }
 
 .quiz-question p {
-  font-size: 16px;
-  margin: 8px 0;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--color-text-primary);
 }
 
 .quiz-options {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 12px 0;
+  margin: 16px 0;
 }
 
 .quiz-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 8px;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-secondary);
   cursor: pointer;
-  transition: background 0.15s;
+  transition:
+    background var(--duration) var(--ease-apple),
+    border-color var(--duration) var(--ease-apple),
+    box-shadow var(--duration) var(--ease-apple);
 }
 
-.quiz-option:hover, .quiz-option.selected {
-  background: var(--bg-hover, #f5f5f5);
-  border-color: var(--accent-color, #2563eb);
+.quiz-option:hover {
+  background: var(--color-fill-hover);
+}
+
+.quiz-option.selected {
+  border-color: rgba(0, 113, 227, 0.45);
+  background: var(--color-accent-soft);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 .quiz-text-input {
   width: 100%;
-  padding: 10px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 8px;
-  font-size: 14px;
-  margin: 12px 0;
+  margin: 14px 0;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+  font-size: 15px;
+  outline: none;
 }
 
-.quiz-submit-btn, .quiz-next-btn, .btn-start-quiz {
-  padding: 10px 24px;
-  background: var(--accent-color, #2563eb);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
+.quiz-text-input:focus {
+  border-color: rgba(0, 113, 227, 0.45);
+  box-shadow: 0 0 0 4px var(--color-accent-soft);
+}
+
+.quiz-submit-btn,
+.quiz-next-btn,
+.btn-start-quiz {
+  height: 40px;
   margin-top: 8px;
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.quiz-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.quiz-submit-btn:hover,
+.quiz-next-btn:hover,
+.btn-start-quiz:hover {
+  background: var(--color-accent-hover);
+}
 
-.quiz-result { padding: 12px 0; }
-.quiz-result-header { font-weight: 600; margin-bottom: 8px; }
-.quiz-result.correct .quiz-result-header { color: #16a34a; }
-.quiz-result.incorrect .quiz-result-header { color: #dc2626; }
-.quiz-result-explanation { color: var(--text-secondary, #666); font-size: 14px; line-height: 1.6; }
-.quiz-done { color: #16a34a; font-weight: 500; margin-top: 12px; }
+.quiz-submit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.quiz-result {
+  padding: 8px 0 4px;
+}
+
+.quiz-result-header {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.quiz-result.correct .quiz-result-header {
+  color: var(--color-success);
+}
+
+.quiz-result.incorrect .quiz-result-header {
+  color: var(--color-danger);
+}
+
+.quiz-result-explanation {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.quiz-done {
+  margin-top: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-success);
+}
