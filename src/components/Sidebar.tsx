@@ -40,7 +40,6 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
     <aside className="sidebar">
       <div className="sidebar-brand">
         <h1 className="sidebar-brand-title">Lexio</h1>
-        <p className="sidebar-brand-sub">学习教练</p>
       </div>
 
       <button

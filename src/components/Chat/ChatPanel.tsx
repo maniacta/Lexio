@@ -31,7 +31,7 @@ export default function ChatPanel({ onOpenSettings }: Props) {
   return (
     <div className="chat-panel">
       <div className="chat-header">
-        <h2>Lexio 学习教练</h2>
+        <h2>Lexio</h2>
       </div>
       {needsKey && (
         <div className="chat-setup-banner">
