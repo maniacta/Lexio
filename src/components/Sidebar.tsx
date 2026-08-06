@@ -75,7 +75,7 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
 
       <button
         type="button"
-        className={`sidebar-tab review ${currentView === "review" ? "active" : ""}`}
+        className={`sidebar-review-btn ${currentView === "review" ? "active" : ""}`}
         onClick={() => onNavigate("review")}
       >
         <span>复习</span>

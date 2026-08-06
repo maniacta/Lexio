@@ -124,12 +124,20 @@ impl DeepSeekClient {
             None
         };
 
+        // Omit temperature — DeepSeek default is fine; not user-configurable in Lexio.
+        // Only send max_tokens for short probes (e.g. connection test).
+        let max_tokens = if self.config.max_tokens > 0 && self.config.max_tokens <= 512 {
+            Some(self.config.max_tokens)
+        } else {
+            None
+        };
+
         ChatRequest {
             model: self.config.model.clone(),
             messages,
             stream,
-            temperature: Some(self.config.temperature),
-            max_tokens: Some(self.config.max_tokens),
+            temperature: None,
+            max_tokens,
             thinking,
             reasoning_effort,
             response_format: if options.json_object {

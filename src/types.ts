@@ -119,7 +119,9 @@ export interface ProviderModel {
   id: string;
   provider_id: string;
   model_name: string;
+  /** Kept for API compat; not shown or edited in settings. */
   temperature: number;
+  /** Kept for API compat; not shown or edited in settings. */
   max_tokens: number;
   is_default: boolean;
 }
@@ -135,8 +137,6 @@ export interface ProviderKindInfo {
   implemented: boolean;
   models: {
     model_name: string;
-    temperature: number;
-    max_tokens: number;
     is_default: boolean;
   }[];
 }
@@ -168,15 +168,11 @@ export interface UpdateProviderRequest {
 
 export interface CreateModelRequest {
   model_name: string;
-  temperature?: number;
-  max_tokens?: number;
   is_default?: boolean;
 }
 
 export interface UpdateModelRequest {
   model_name: string;
-  temperature?: number;
-  max_tokens?: number;
   is_default?: boolean;
 }
 

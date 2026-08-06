@@ -138,6 +138,17 @@ pub async fn delete_model(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn set_model_default(
+    State(state): State<&'static AppState>,
+    Path((provider_id, model_id)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    blocking::run_user(move || {
+        repo::settings::set_model_default(state.db, &provider_id, &model_id)
+    })
+    .await?;
+    Ok(StatusCode::OK)
+}
+
 // ── Task Models ──
 
 pub async fn get_task_models(

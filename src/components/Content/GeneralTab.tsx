@@ -70,10 +70,12 @@ export default function GeneralTab({ settings, onSaved }: Props) {
 
       <div className="setting-group">
         <label className="setting-label">语言</label>
-        <select value={language} onChange={(e) => handleLanguageChange(e.target.value)}>
-          <option value="zh">中文</option>
-          <option value="en">English（界面文案暂仍为中文）</option>
-        </select>
+        <div className="select-wrap">
+          <select value={language} onChange={(e) => handleLanguageChange(e.target.value)}>
+            <option value="zh">中文</option>
+            <option value="en">English（界面文案暂仍为中文）</option>
+          </select>
+        </div>
         <p className="setting-hint">完整英文界面尚未完成，目前仅更新页面语言标记。</p>
       </div>
 

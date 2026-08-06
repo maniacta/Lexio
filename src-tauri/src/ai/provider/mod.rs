@@ -142,8 +142,6 @@ pub struct ProviderKindInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderKindModelInfo {
     pub model_name: String,
-    pub temperature: f64,
-    pub max_tokens: i32,
     pub is_default: bool,
 }
 
@@ -151,6 +149,7 @@ pub fn list_provider_kinds() -> Vec<ProviderKindInfo> {
     ProviderKind::all()
         .iter()
         .copied()
+        .filter(|k| k.is_implemented())
         .map(|k| ProviderKindInfo {
             kind: k.as_str().to_string(),
             display_name: k.display_name().to_string(),
@@ -161,8 +160,6 @@ pub fn list_provider_kinds() -> Vec<ProviderKindInfo> {
                 .iter()
                 .map(|m| ProviderKindModelInfo {
                     model_name: m.model_name.to_string(),
-                    temperature: m.temperature,
-                    max_tokens: m.max_tokens,
                     is_default: m.is_default,
                 })
                 .collect(),

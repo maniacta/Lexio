@@ -43,6 +43,10 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
             axum::routing::post(settings::create_model))
         .route("/api/settings/providers/{provider_id}/models/{model_id}",
             axum::routing::put(settings::update_model).delete(settings::delete_model))
+        .route(
+            "/api/settings/providers/{provider_id}/models/{model_id}/default",
+            axum::routing::post(settings::set_model_default),
+        )
         .route("/api/settings/tasks", get(settings::get_task_models))
         .route("/api/settings/tasks/{task_name}", axum::routing::put(settings::set_task_model))
         .route("/api/settings/general", axum::routing::put(settings::update_general))

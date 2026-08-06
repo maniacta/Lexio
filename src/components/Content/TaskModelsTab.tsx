@@ -59,17 +59,19 @@ export default function TaskModelsTab({ settings, onSaved }: Props) {
         return (
           <div key={taskName} className="setting-group">
             <label className="setting-label">{label}</label>
-            <select
-              value={current?.model_id || ""}
-              onChange={e => handleChange(taskName, e.target.value || null)}
-              disabled={saving === taskName}
-            >
-              {options.map(o => (
-                <option key={o.modelId || "__default"} value={o.modelId || ""}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="select-wrap">
+              <select
+                value={current?.model_id || ""}
+                onChange={(e) => handleChange(taskName, e.target.value || null)}
+                disabled={saving === taskName}
+              >
+                {options.map((o) => (
+                  <option key={o.modelId || "__default"} value={o.modelId || ""}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             {current?.resolved && (
               <span className="resolved-hint">当前生效：{current.resolved}</span>
             )}

@@ -57,8 +57,11 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
     const err = (await res.text()).trim();
     throw new Error(err || `API error ${res.status}`);
   }
+  // 204 / empty 200 bodies (e.g. updateProvider) must not call res.json()
   if (res.status === 204) return undefined as T;
-  return res.json();
+  const text = await res.text();
+  if (!text.trim()) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 export const api = {
@@ -209,6 +212,11 @@ export const api = {
     deleteModel: (providerId: string, modelId: string, signal?: AbortSignal) =>
       request<void>(`/settings/providers/${providerId}/models/${modelId}`, {
         method: "DELETE",
+        signal,
+      }),
+    setModelDefault: (providerId: string, modelId: string, signal?: AbortSignal) =>
+      request<void>(`/settings/providers/${providerId}/models/${modelId}/default`, {
+        method: "POST",
         signal,
       }),
     getTaskModels: (signal?: AbortSignal) =>

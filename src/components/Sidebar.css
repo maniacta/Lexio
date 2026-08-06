@@ -92,13 +92,13 @@
   box-shadow: var(--shadow-sm);
 }
 
-.sidebar-tab.review {
-  position: relative;
+.sidebar-review-btn {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   width: calc(100% - 20px);
-  margin: 8px 10px 0;
+  margin: 4px 10px 8px;
   padding: 10px 12px;
   border: none;
   border-radius: var(--radius-sm);
@@ -108,31 +108,33 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: background var(--duration) var(--ease-apple);
+  transition: background var(--duration) var(--ease-apple), color var(--duration) var(--ease-apple);
 }
 
-.sidebar-tab.review:hover {
+.sidebar-review-btn:hover {
   background: var(--color-sidebar-hover);
 }
 
-.sidebar-tab.review.active {
+.sidebar-review-btn.active {
   background: var(--color-sidebar-active);
   color: var(--color-accent);
   font-weight: 600;
-  box-shadow: none;
 }
 
 .review-badge {
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   border-radius: var(--radius-pill);
   background: var(--color-danger);
   color: #fff;
   font-size: 11px;
   font-weight: 600;
-  line-height: 20px;
-  text-align: center;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .sidebar-scroll {

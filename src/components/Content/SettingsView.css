@@ -106,7 +106,10 @@
 .setting-group input[type="password"],
 .setting-group input[type="number"],
 .provider-edit-form input,
-.add-model-row input {
+.provider-edit-form select,
+.add-model-row input,
+.add-model-row select,
+.select-wrap select {
   width: 100%;
   height: 40px;
   padding: 0 12px;
@@ -119,10 +122,31 @@
   transition: border-color var(--duration) var(--ease-apple), box-shadow var(--duration) var(--ease-apple);
 }
 
+.select-wrap {
+  position: relative;
+}
+
+.select-wrap select,
+.setting-group select,
+.provider-edit-form select,
+.add-model-row select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236e6e73' d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 10px 7px;
+  cursor: pointer;
+}
+
 .setting-group select:focus,
 .setting-group input:focus,
 .provider-edit-form input:focus,
-.add-model-row input:focus {
+.provider-edit-form select:focus,
+.add-model-row input:focus,
+.select-wrap select:focus {
   border-color: rgba(0, 113, 227, 0.45);
   box-shadow: 0 0 0 4px var(--color-accent-soft);
 }
@@ -213,11 +237,87 @@
   box-shadow: 0 0 0 3px var(--color-accent-soft), var(--shadow-sm);
 }
 
+.provider-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .provider-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--color-text-primary);
+}
+
+.default-dot {
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.provider-key-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.provider-status {
+  margin: 0 0 12px;
+}
+
+.model-catalog {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-catalog-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.model-catalog-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.model-catalog-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.model-catalog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.legacy-models {
+  margin-top: 14px;
 }
 
 .badge-preset {
@@ -243,7 +343,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 .provider-edit-form {

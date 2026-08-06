@@ -127,12 +127,19 @@ pub fn create_provider_by_kind(
     set_default: bool,
 ) -> Result<ModelProvider, String> {
     let url = kind.normalize_base_url(base_url)?;
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("MISSING_API_KEY: 请填写 API Key".into());
+    }
     if set_default && !kind.is_implemented() {
         return Err(format!(
             "「{}」调用尚未接入，不能设为默认厂商",
             kind.display_name()
         ));
     }
+    // Encrypt before taking the DB lock — avoids holding the mutex across crypto I/O.
+    let stored_key = crate::crypto::encrypt_secret(api_key)?;
+
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let exists: i32 = conn
@@ -159,7 +166,6 @@ pub fn create_provider_by_kind(
 
     let name = kind.display_name();
     let api_format = kind.as_str();
-    let stored_key = crate::crypto::encrypt_secret(api_key)?;
 
     conn.execute(
         "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default, created_at)
@@ -210,6 +216,12 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
         ));
     }
 
+    // Encrypt before lock so a crypto failure doesn't hold the mutex.
+    let new_key = match req.api_key.as_deref().map(str::trim) {
+        Some(key) if !key.is_empty() => Some(crate::crypto::encrypt_secret(key)?),
+        _ => None,
+    };
+
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     if req.is_default == Some(true) {
         conn.execute("UPDATE model_providers SET is_default = 0", [])
@@ -217,21 +229,12 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
     }
 
     // Kind (api_format) is immutable — only name/url/key/default may change
-    if let Some(ref key) = req.api_key {
-        if !key.is_empty() {
-            let stored_key = crate::crypto::encrypt_secret(key)?;
-            conn.execute(
-                "UPDATE model_providers SET base_url=?1, api_key=?2 WHERE id=?3",
-                rusqlite::params![url, stored_key, id],
-            )
-            .map_err(|e| e.to_string())?;
-        } else {
-            conn.execute(
-                "UPDATE model_providers SET base_url=?1 WHERE id=?2",
-                rusqlite::params![url, id],
-            )
-            .map_err(|e| e.to_string())?;
-        }
+    if let Some(stored_key) = new_key {
+        conn.execute(
+            "UPDATE model_providers SET base_url=?1, api_key=?2 WHERE id=?3",
+            rusqlite::params![url, stored_key, id],
+        )
+        .map_err(|e| e.to_string())?;
     } else {
         conn.execute(
             "UPDATE model_providers SET base_url=?1 WHERE id=?2",
@@ -314,25 +317,94 @@ fn list_models_by_provider(db: &Database, provider_id: &str) -> Result<Vec<Provi
 }
 
 pub fn create_model(db: &Database, provider_id: &str, req: &CreateModelRequest) -> Result<ProviderModel, String> {
+    let provider = get_provider(db, provider_id)?.ok_or_else(|| "厂商不存在".to_string())?;
+    let kind = crate::ai::ProviderKind::parse(&provider.api_format)
+        .ok_or_else(|| format!("未知厂商类型: {}", provider.api_format))?;
+    let model_name = req.model_name.trim();
+    if model_name.is_empty() {
+        return Err("请选择模型".into());
+    }
+    let preset = kind
+        .default_models()
+        .iter()
+        .find(|m| m.model_name == model_name)
+        .ok_or_else(|| {
+            format!(
+                "「{}」不是 {} 官方支持的模型。可选：{}",
+                model_name,
+                kind.display_name(),
+                kind.default_models()
+                    .iter()
+                    .map(|m| m.model_name)
+                    .collect::<Vec<_>>()
+                    .join("、")
+            )
+        })?;
+    // Temperature / max_tokens are no longer user-configurable; keep DB columns for
+    // schema compat and seed from the vendor catalog defaults.
+    let temp = preset.temperature;
+    let tokens = preset.max_tokens;
+
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let dup: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM provider_models WHERE provider_id = ?1 AND model_name = ?2",
+            rusqlite::params![provider_id, model_name],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if dup > 0 {
+        return Err(format!("模型「{}」已添加", model_name));
+    }
+
     let id = new_id();
-    let temp = req.temperature.unwrap_or(0.7);
-    let tokens = req.max_tokens.unwrap_or(4096);
     let is_default = if req.is_default == Some(true) {
         conn.execute("UPDATE provider_models SET is_default = 0 WHERE provider_id = ?1", [provider_id])
             .map_err(|e| e.to_string())?;
         true
     } else {
-        // First model for this provider becomes default automatically
         let count: i32 = conn.query_row("SELECT COUNT(*) FROM provider_models WHERE provider_id = ?1", [provider_id], |r| r.get(0))
             .map_err(|e| e.to_string())?;
         count == 0
     };
     conn.execute(
         "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![id, provider_id, req.model_name, temp, tokens, is_default as i32],
+        rusqlite::params![id, provider_id, model_name, temp, tokens, is_default as i32],
     ).map_err(|e| e.to_string())?;
-    Ok(ProviderModel { id, provider_id: provider_id.to_string(), model_name: req.model_name.clone(), temperature: temp, max_tokens: tokens, is_default })
+    Ok(ProviderModel {
+        id,
+        provider_id: provider_id.to_string(),
+        model_name: model_name.to_string(),
+        temperature: temp,
+        max_tokens: tokens,
+        is_default,
+    })
+}
+
+/// Mark a model as the provider default without touching other fields.
+pub fn set_model_default(db: &Database, provider_id: &str, model_id: &str) -> Result<(), String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let exists: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM provider_models WHERE id = ?1 AND provider_id = ?2",
+            rusqlite::params![model_id, provider_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if exists == 0 {
+        return Err("模型不存在".into());
+    }
+    conn.execute(
+        "UPDATE provider_models SET is_default = 0 WHERE provider_id = ?1",
+        [provider_id],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE provider_models SET is_default = 1 WHERE id = ?1 AND provider_id = ?2",
+        rusqlite::params![model_id, provider_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn update_model(db: &Database, provider_id: &str, model_id: &str, req: &UpdateModelRequest) -> Result<(), String> {

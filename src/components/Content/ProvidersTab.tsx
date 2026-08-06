@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SettingsData, ProviderWithModels, ProviderKindInfo } from "../../types";
 import { api } from "../../api/client";
 
 interface Props {
   settings: SettingsData;
   onSaved: () => void;
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 export default function ProvidersTab({ settings, onSaved }: Props) {
@@ -14,15 +18,9 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
   const [addNew, setAddNew] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState("");
-
-  const [formUrl, setFormUrl] = useState("");
-  const [formKey, setFormKey] = useState("");
+  const [status, setStatus] = useState("");
   const [addKind, setAddKind] = useState("deepseek");
-
-  const [modelName, setModelName] = useState("");
-  const [modelTemp, setModelTemp] = useState(0.7);
-  const [modelTokens, setModelTokens] = useState(4096);
+  const keyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api.settings.listProviderKinds().then(setKinds).catch(() => {});
@@ -37,56 +35,79 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
   const existingKinds = new Set(providers.map((p) => p.api_format));
   const availableKinds = kinds.filter((k) => !existingKinds.has(k.kind));
 
+  const refresh = async () => {
+    onSaved();
+    const data = await api.settings.getAll();
+    setProviders(data.providers);
+  };
+
+  const readApiKey = () => {
+    // Prefer DOM value so browser autofill is not lost when React state stays empty.
+    const fromDom = keyInputRef.current?.value ?? "";
+    return fromDom.trim();
+  };
+
   const startEdit = (p: ProviderWithModels) => {
     setEditId(p.id);
     setAddNew(false);
-    setFormUrl(p.base_url);
-    setFormKey("");
-    setTestResult("");
+    setStatus("");
+    if (keyInputRef.current) keyInputRef.current.value = "";
   };
 
   const startAdd = () => {
     setEditId(null);
     setAddNew(true);
-    const first = availableKinds[0];
-    setAddKind(first?.kind ?? "deepseek");
-    setFormUrl(first?.default_base_url ?? "");
-    setFormKey("");
-    setTestResult("");
+    setAddKind(availableKinds[0]?.kind ?? "deepseek");
+    setStatus("");
+    if (keyInputRef.current) keyInputRef.current.value = "";
   };
 
-  const cancelEdit = () => {
+  const cancelEdit = (clearStatus = true) => {
     setEditId(null);
     setAddNew(false);
+    if (clearStatus) setStatus("");
   };
 
-  const handleKindChange = (kind: string) => {
-    setAddKind(kind);
-    const info = kinds.find((k) => k.kind === kind);
-    if (info) setFormUrl(info.default_base_url);
-  };
+  const kindLabel = (p: ProviderWithModels) =>
+    kinds.find((x) => x.kind === p.api_format)?.display_name ?? p.name;
+
+  const catalogFor = (p: ProviderWithModels) =>
+    kinds.find((x) => x.kind === p.api_format)?.models ?? [];
 
   const handleSave = async () => {
     setSaving(true);
+    setStatus("");
     try {
+      const apiKey = readApiKey();
       if (addNew) {
+        if (!apiKey) {
+          setStatus("❌ 请填写 API Key");
+          return;
+        }
         await api.settings.createProvider({
           kind: addKind,
-          api_key: formKey,
-          base_url: formUrl || undefined,
+          api_key: apiKey,
         });
+        await refresh();
+        cancelEdit(false);
+        setStatus("✅ 已添加并保存 API Key");
       } else if (editId) {
+        const p = providers.find((x) => x.id === editId);
+        if (!p) return;
+        if (!apiKey) {
+          setStatus("❌ 请粘贴 API Key 后再保存");
+          return;
+        }
         await api.settings.updateProvider(editId, {
-          base_url: formUrl,
-          api_key: formKey || undefined,
+          base_url: p.base_url,
+          api_key: apiKey,
         });
+        await refresh();
+        cancelEdit(false);
+        setStatus("✅ API Key 已保存");
       }
-      cancelEdit();
-      onSaved();
-      const data = await api.settings.getAll();
-      setProviders(data.providers);
-    } catch (e: any) {
-      setTestResult(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      setStatus(`❌ ${errMsg(e)}`);
     } finally {
       setSaving(false);
     }
@@ -97,16 +118,14 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
     try {
       await api.settings.deleteProvider(id);
       if (editId === id) cancelEdit();
-      onSaved();
-      const data = await api.settings.getAll();
-      setProviders(data.providers);
-      setTestResult("");
-    } catch (e: any) {
-      setTestResult(`❌ ${e.message}`);
+      setStatus("");
+      await refresh();
+    } catch (e: unknown) {
+      setStatus(`❌ ${errMsg(e)}`);
     }
   };
 
-  const handleSetDefault = async (id: string) => {
+  const handleSetDefaultProvider = async (id: string) => {
     const p = providers.find((x) => x.id === id);
     if (!p) return;
     try {
@@ -114,187 +133,204 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
         base_url: p.base_url,
         is_default: true,
       });
-      onSaved();
-      const data = await api.settings.getAll();
-      setProviders(data.providers);
-    } catch (e: any) {
-      setTestResult(`❌ ${e.message}`);
+      await refresh();
+    } catch (e: unknown) {
+      setStatus(`❌ ${errMsg(e)}`);
     }
   };
 
   const handleTest = async (providerId: string, modelName: string) => {
     setTesting(modelName);
-    setTestResult("");
+    setStatus("");
     try {
       const res = await api.settings.testConnection(providerId, modelName);
-      setTestResult(res.ok ? `✅ ${res.message}` : `❌ ${res.message}`);
-    } catch (e: any) {
-      setTestResult(`❌ ${e.message}`);
+      setStatus(res.ok ? `✅ ${res.message}` : `❌ ${res.message}`);
+    } catch (e: unknown) {
+      setStatus(`❌ ${errMsg(e)}`);
     } finally {
       setTesting(null);
     }
   };
 
-  const handleAddModel = async () => {
-    if (!editId || !modelName) return;
+  const handleEnableModel = async (providerId: string, modelName: string) => {
     try {
-      await api.settings.createModel(editId, {
-        model_name: modelName,
-        temperature: modelTemp,
-        max_tokens: modelTokens,
-      });
-      setModelName("");
-      onSaved();
-      const data = await api.settings.getAll();
-      setProviders(data.providers);
-    } catch (e: any) {
-      setTestResult(`❌ ${e.message}`);
+      await api.settings.createModel(providerId, { model_name: modelName });
+      await refresh();
+    } catch (e: unknown) {
+      setStatus(`❌ ${errMsg(e)}`);
     }
   };
 
-  const handleDeleteModel = async (providerId: string, modelId: string) => {
+  const handleDisableModel = async (providerId: string, modelId: string) => {
     try {
       await api.settings.deleteModel(providerId, modelId);
-      onSaved();
-      const data = await api.settings.getAll();
-      setProviders(data.providers);
-    } catch (e: any) {
-      setTestResult(`❌ ${e.message}`);
+      await refresh();
+    } catch (e: unknown) {
+      setStatus(`❌ ${errMsg(e)}`);
     }
   };
 
-  const kindLabel = (p: ProviderWithModels) => {
-    const k = kinds.find((x) => x.kind === p.api_format);
-    return k?.display_name ?? p.api_format;
+  const handleSetDefaultModel = async (providerId: string, modelId: string) => {
+    try {
+      await api.settings.setModelDefault(providerId, modelId);
+      await refresh();
+    } catch (e: unknown) {
+      setStatus(`❌ ${errMsg(e)}`);
+    }
   };
 
-  const kindImplemented = (p: ProviderWithModels) =>
-    kinds.find((x) => x.kind === p.api_format)?.implemented ?? p.api_format === "deepseek";
-
-  const suggestedModels = (p: ProviderWithModels) =>
-    kinds.find((x) => x.kind === p.api_format)?.models.map((m) => m.model_name) ?? [];
+  const keyPlaceholder = (p?: ProviderWithModels) => {
+    if (!p) return "粘贴 DeepSeek API Key";
+    if (p.api_key) return `当前 ${p.api_key}，粘贴新密钥以更新`;
+    return "尚未配置，请粘贴 API Key";
+  };
 
   return (
     <div className="settings-tab providers-tab">
       <p className="tab-desc">
-        每个厂商独立适配。当前已接入 DeepSeek；OpenAI / Anthropic 可先配置，调用能力后续单独接入。
+        配置 DeepSeek API Key，并从官方模型目录启用模型。温度、max_tokens 等采样参数由程序按任务决定，无需手动填写。
       </p>
+
+      {status && !editId && !addNew && <p className="setting-msg provider-status">{status}</p>}
 
       <ul className="provider-list">
         {providers.map((p) => (
           <li key={p.id} className={`provider-item ${p.is_default ? "default" : ""}`}>
-            <span className="provider-name">
-              {p.is_default && "● "}
-              {p.name}
-              <span className="badge-preset">{kindLabel(p)}</span>
-              {!kindImplemented(p) && <span className="badge-preset">未接入调用</span>}
-            </span>
-            <span className="provider-url">{p.base_url}</span>
-            <div className="provider-actions">
-              {!p.is_default && (
-                <button className="btn-sm" onClick={() => handleSetDefault(p.id)}>
-                  设为默认
+            <div className="provider-item-head">
+              <div>
+                <span className="provider-name">
+                  {p.is_default && <span className="default-dot" aria-hidden />}
+                  {p.name}
+                  <span className="badge-preset">{kindLabel(p)}</span>
+                </span>
+                <span className="provider-url">{p.base_url}</span>
+                <span className="provider-key-hint">Key：{p.api_key || "未设置"}</span>
+              </div>
+              <div className="provider-actions">
+                {!p.is_default && (
+                  <button type="button" className="btn-sm" onClick={() => handleSetDefaultProvider(p.id)}>
+                    设为默认
+                  </button>
+                )}
+                <button type="button" className="btn-sm" onClick={() => startEdit(p)}>
+                  配置
                 </button>
-              )}
-              <button className="btn-sm" onClick={() => startEdit(p)}>
-                编辑
-              </button>
-              <button className="btn-sm btn-danger" onClick={() => handleDelete(p.id)}>
-                删除
-              </button>
+                <button type="button" className="btn-sm btn-danger" onClick={() => handleDelete(p.id)}>
+                  删除
+                </button>
+              </div>
             </div>
 
             {editId === p.id && (
               <div className="provider-edit-form">
-                <h4>编辑 {kindLabel(p)}</h4>
-                <label>厂商类型</label>
-                <input value={kindLabel(p)} disabled />
-                <label>Base URL</label>
-                <input value={formUrl} readOnly title="仅允许官方 HTTPS 地址" />
-                <p className="resolved-hint">仅允许该厂商官方地址，保存时会自动校验。</p>
-                <label>API Key</label>
-                <input
-                  type="password"
-                  value={formKey}
-                  onChange={(e) => setFormKey(e.target.value)}
-                  placeholder="留空则不修改"
-                />
+                <h4>配置 {kindLabel(p)}</h4>
 
-                {editProvider && (
-                  <div className="models-section">
-                    <h4>模型列表</h4>
-                    <ul>
-                      {editProvider.models.map((m) => (
-                        <li key={m.id} className="model-item">
-                          <span>{m.model_name}</span>
-                          <span>Temp: {m.temperature}</span>
-                          <span>Tokens: {m.max_tokens}</span>
-                          <button
-                            className="btn-sm btn-danger"
-                            onClick={() => handleDeleteModel(editId!, m.id)}
-                          >
-                            删除
-                          </button>
-                          <button
-                            className="btn-sm"
-                            onClick={() => handleTest(editId!, m.model_name)}
-                            disabled={testing === m.model_name || !kindImplemented(p)}
-                            title={!kindImplemented(p) ? "该厂商调用尚未接入" : "测试连接"}
-                          >
-                            {testing === m.model_name ? "测试中..." : "测试"}
-                          </button>
+                <label htmlFor="provider-api-key">API Key</label>
+                <input
+                  id="provider-api-key"
+                  ref={keyInputRef}
+                  type="password"
+                  name="api_key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={keyPlaceholder(p)}
+                />
+                <p className="resolved-hint">密钥本地加密存储。浏览器自动填充时也会正确读取。</p>
+
+                <div className="models-section">
+                  <h4>官方模型</h4>
+                  <p className="resolved-hint">启用后可用于对话与任务；默认模型用于未单独指定任务时。</p>
+                  <ul className="model-catalog">
+                    {catalogFor(p).map((cat) => {
+                      const existing = editProvider?.models.find((m) => m.model_name === cat.model_name);
+                      return (
+                        <li key={cat.model_name} className="model-catalog-item">
+                          <div className="model-catalog-info">
+                            <span className="model-catalog-name">{cat.model_name}</span>
+                            {existing?.is_default && <span className="badge-preset">默认</span>}
+                          </div>
+                          <div className="model-catalog-actions">
+                            {existing ? (
+                              <>
+                                {!existing.is_default && (
+                                  <button
+                                    type="button"
+                                    className="btn-sm"
+                                    onClick={() => handleSetDefaultModel(p.id, existing.id)}
+                                  >
+                                    设为默认
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn-sm"
+                                  onClick={() => handleTest(p.id, existing.model_name)}
+                                  disabled={testing === existing.model_name}
+                                >
+                                  {testing === existing.model_name ? "测试中…" : "测试"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-sm btn-danger"
+                                  onClick={() => handleDisableModel(p.id, existing.id)}
+                                  disabled={editProvider != null && editProvider.models.length <= 1}
+                                  title={
+                                    editProvider != null && editProvider.models.length <= 1
+                                      ? "至少保留一个模型"
+                                      : "停用"
+                                  }
+                                >
+                                  停用
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-sm"
+                                onClick={() => handleEnableModel(p.id, cat.model_name)}
+                              >
+                                启用
+                              </button>
+                            )}
+                          </div>
                         </li>
-                      ))}
-                    </ul>
-                    <div className="add-model-row">
-                      {suggestedModels(p).length > 0 ? (
-                        <select
-                          value={modelName}
-                          onChange={(e) => setModelName(e.target.value)}
-                        >
-                          <option value="">选择模型…</option>
-                          {suggestedModels(p).map((name) => (
-                            <option key={name} value={name}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          placeholder="模型名"
-                          value={modelName}
-                          onChange={(e) => setModelName(e.target.value)}
-                        />
-                      )}
-                      <input
-                        type="number"
-                        value={modelTemp}
-                        step="0.1"
-                        min="0"
-                        max="2"
-                        onChange={(e) => setModelTemp(+e.target.value)}
-                        title="Temperature"
-                      />
-                      <input
-                        type="number"
-                        value={modelTokens}
-                        onChange={(e) => setModelTokens(+e.target.value)}
-                        title="Max Tokens"
-                      />
-                      <button className="btn-sm" onClick={handleAddModel}>
-                        + 添加
-                      </button>
-                    </div>
-                  </div>
-                )}
+                      );
+                    })}
+                  </ul>
+
+                  {editProvider &&
+                    editProvider.models.some(
+                      (m) => !catalogFor(p).some((c) => c.model_name === m.model_name)
+                    ) && (
+                      <div className="legacy-models">
+                        <h4>其他已保存模型</h4>
+                        <ul className="model-catalog">
+                          {editProvider.models
+                            .filter((m) => !catalogFor(p).some((c) => c.model_name === m.model_name))
+                            .map((m) => (
+                              <li key={m.id} className="model-catalog-item">
+                                <span className="model-catalog-name">{m.model_name}</span>
+                                <button
+                                  type="button"
+                                  className="btn-sm btn-danger"
+                                  onClick={() => handleDisableModel(p.id, m.id)}
+                                >
+                                  删除
+                                </button>
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    )}
+                </div>
 
                 <div className="form-actions">
-                  {testResult && <span className="setting-msg">{testResult}</span>}
-                  <button className="btn-primary" onClick={handleSave} disabled={saving}>
-                    {saving ? "保存中..." : "保存"}
+                  {status && <span className="setting-msg">{status}</span>}
+                  <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
+                    {saving ? "保存中…" : "保存密钥"}
                   </button>
-                  <button className="btn-secondary" onClick={cancelEdit}>
-                    取消
+                  <button type="button" className="btn-secondary" onClick={cancelEdit}>
+                    完成
                   </button>
                 </div>
               </div>
@@ -304,42 +340,50 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
       </ul>
 
       {addNew && (
-        <div className="provider-edit-form">
+        <div className="provider-edit-form provider-add-form">
           <h4>添加厂商</h4>
-          <label>厂商类型</label>
-          <select value={addKind} onChange={(e) => handleKindChange(e.target.value)}>
-            {availableKinds.map((k) => (
-              <option key={k.kind} value={k.kind}>
-                {k.display_name}
-                {!k.implemented ? "（配置可用，调用未接入）" : ""}
-              </option>
-            ))}
-          </select>
+          <label htmlFor="add-kind">厂商</label>
+          <div className="select-wrap">
+            <select
+              id="add-kind"
+              value={addKind}
+              onChange={(e) => setAddKind(e.target.value)}
+              disabled={availableKinds.length === 0}
+            >
+              {availableKinds.map((k) => (
+                <option key={k.kind} value={k.kind}>
+                  {k.display_name}
+                </option>
+              ))}
+            </select>
+          </div>
           {selectedKind && (
             <p className="resolved-hint">
-              将预置模型：{selectedKind.models.map((m) => m.model_name).join("、")}
+              官方地址 {selectedKind.default_base_url} · 将预置{" "}
+              {selectedKind.models.map((m) => m.model_name).join("、")}
             </p>
           )}
-          <label>Base URL</label>
-          <input value={formUrl} readOnly title="仅允许官方 HTTPS 地址" />
-          <p className="resolved-hint">使用官方地址，不可改为任意 URL（防止密钥外泄）。</p>
-          <label>API Key</label>
+          <label htmlFor="add-api-key">API Key</label>
           <input
+            id="add-api-key"
+            ref={keyInputRef}
             type="password"
-            value={formKey}
-            onChange={(e) => setFormKey(e.target.value)}
+            name="api_key"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="粘贴 API Key（必填）"
           />
-
           <div className="form-actions">
-            {testResult && <span className="setting-msg">{testResult}</span>}
+            {status && <span className="setting-msg">{status}</span>}
             <button
+              type="button"
               className="btn-primary"
               onClick={handleSave}
               disabled={saving || availableKinds.length === 0}
             >
-              {saving ? "保存中..." : "保存"}
+              {saving ? "保存中…" : "保存"}
             </button>
-            <button className="btn-secondary" onClick={cancelEdit}>
+            <button type="button" className="btn-secondary" onClick={cancelEdit}>
               取消
             </button>
           </div>
@@ -347,12 +391,12 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
       )}
 
       {!addNew && availableKinds.length > 0 && (
-        <button className="btn-secondary" onClick={startAdd}>
+        <button type="button" className="btn-secondary" onClick={startAdd}>
           + 添加厂商
         </button>
       )}
-      {!addNew && availableKinds.length === 0 && (
-        <p className="resolved-hint">已添加全部支持的厂商类型。</p>
+      {!addNew && providers.length === 0 && availableKinds.length === 0 && (
+        <p className="resolved-hint">暂无可用厂商类型。</p>
       )}
     </div>
   );
