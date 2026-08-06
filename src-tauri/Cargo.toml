@@ -35,5 +35,8 @@ tokio-stream = "0.1"
 thiserror = "1"
 futures-util = "0.3"
 async-trait = "0.1"
+aes-gcm = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
 
 

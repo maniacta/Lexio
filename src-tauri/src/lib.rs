@@ -5,6 +5,7 @@ pub mod db;
 pub mod repo;
 pub mod learning;
 pub mod ai;
+pub mod crypto;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -22,8 +23,14 @@ fn get_api_port(state: tauri::State<'_, ApiState>) -> u16 {
     state.port
 }
 
+#[tauri::command]
+fn get_api_token(state: tauri::State<'_, ApiState>) -> String {
+    state.token.clone()
+}
+
 struct ApiState {
     port: u16,
+    token: String,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,8 +43,11 @@ pub fn run() {
             let app_dir: PathBuf = app_handle.path().app_data_dir().unwrap();
             std::fs::create_dir_all(&app_dir).unwrap();
             let db_path = app_dir.join("lexio.db");
+            let db_path_str = db_path.to_str().unwrap().to_string();
 
-            let db = Database::new(db_path.to_str().unwrap()).expect("Failed to open database");
+            crypto::init_master_key(&db_path_str).expect("Failed to init master key");
+
+            let db = Database::new(&db_path_str).expect("Failed to open database");
             db.migrate().expect("Failed to run migrations");
             let db: &'static db::Database = Box::leak(Box::new(db));
             app_handle.manage(db);
@@ -47,24 +57,38 @@ pub fn run() {
                 .expect("Failed to initialize settings presets");
             repo::settings::migrate_deepseek_models(db)
                 .expect("Failed to migrate DeepSeek models");
+            repo::settings::migrate_encrypt_api_keys(db)
+                .expect("Failed to encrypt API keys");
+
+            let api_token = crypto::generate_api_token();
+            app_handle.manage(ApiState {
+                port: 3001,
+                token: api_token.clone(),
+            });
 
             let app_state: &'static api::ai_routes::AppState =
-                Box::leak(Box::new(api::ai_routes::AppState { db }));
+                Box::leak(Box::new(api::ai_routes::AppState {
+                    db,
+                    api_token,
+                }));
 
             tauri::async_runtime::spawn(async move {
                 let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
                 let listener = TcpListener::bind(addr).await.unwrap();
                 let actual_port = listener.local_addr().unwrap().port();
-
-                app_handle.manage(ApiState { port: actual_port });
                 eprintln!("Lexio backend running on http://127.0.0.1:{actual_port}");
 
-                axum::serve(listener, server::app(app_state)).await.unwrap();
+                axum::serve(
+                    listener,
+                    server::app(app_state).into_make_service_with_connect_info::<SocketAddr>(),
+                )
+                .await
+                .unwrap();
             });
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, get_api_port])
+        .invoke_handler(tauri::generate_handler![greet, get_api_port, get_api_token])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -62,11 +62,12 @@ pub fn list_providers(db: &Database) -> Result<Vec<ProviderWithModels>, String> 
     let mut result = Vec::new();
     for p in providers {
         let models = list_models_by_provider(db, &p.id)?;
+        let plain = crate::crypto::decrypt_secret(&p.api_key)?;
         result.push(ProviderWithModels {
             id: p.id,
             name: p.name,
             base_url: p.base_url,
-            api_key: mask_api_key(&p.api_key),
+            api_key: mask_api_key(&plain),
             api_format: p.api_format,
             is_preset: p.is_preset,
             is_default: p.is_default,
@@ -158,11 +159,12 @@ pub fn create_provider_by_kind(
 
     let name = kind.display_name();
     let api_format = kind.as_str();
+    let stored_key = crate::crypto::encrypt_secret(api_key)?;
 
     conn.execute(
         "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
-        rusqlite::params![id, name, url, api_key, api_format, is_default as i32, now],
+        rusqlite::params![id, name, url, stored_key, api_format, is_default as i32, now],
     )
     .map_err(|e| e.to_string())?;
 
@@ -217,9 +219,10 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
     // Kind (api_format) is immutable — only name/url/key/default may change
     if let Some(ref key) = req.api_key {
         if !key.is_empty() {
+            let stored_key = crate::crypto::encrypt_secret(key)?;
             conn.execute(
                 "UPDATE model_providers SET base_url=?1, api_key=?2 WHERE id=?3",
-                rusqlite::params![url, key, id],
+                rusqlite::params![url, stored_key, id],
             )
             .map_err(|e| e.to_string())?;
         } else {
@@ -476,11 +479,12 @@ pub fn resolve_llm_config(db: &Database, task_name: &str) -> Result<crate::ai::L
     let kind = crate::ai::ProviderKind::parse(&provider.api_format)
         .ok_or_else(|| format!("未知厂商类型: {}", provider.api_format))?;
     let base_url = kind.normalize_base_url(&provider.base_url)?;
+    let api_key = crate::crypto::decrypt_secret(&provider.api_key)?;
 
     Ok(crate::ai::LlmConfig {
         kind,
         base_url,
-        api_key: provider.api_key,
+        api_key,
         model: model.model_name,
         temperature: model.temperature,
         max_tokens: model.max_tokens,
@@ -608,6 +612,35 @@ pub fn init_presets(db: &Database) -> Result<(), String> {
 
 /// Migrate legacy DeepSeek model IDs to current V4 API models.
 /// Docs: https://api-docs.deepseek.com/zh-cn/ — deepseek-v4-flash / deepseek-v4-pro
+/// Encrypt any plaintext API keys left in the DB (idempotent).
+pub fn migrate_encrypt_api_keys(db: &Database) -> Result<(), String> {
+    let rows: Vec<(String, String)> = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT id, api_key FROM model_providers")
+            .map_err(|e| e.to_string())?;
+        let mapped: Result<Vec<_>, _> = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?
+            .collect();
+        mapped.map_err(|e| e.to_string())?
+    };
+
+    for (id, key) in rows {
+        if key.is_empty() || crate::crypto::is_encrypted(&key) {
+            continue;
+        }
+        let enc = crate::crypto::encrypt_secret(&key)?;
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE model_providers SET api_key = ?1 WHERE id = ?2",
+            rusqlite::params![enc, id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
@@ -743,6 +776,7 @@ pub fn resolve_for_test(db: &Database, provider_id: &str, model_name: &str) -> R
     let kind = crate::ai::ProviderKind::parse(&api_format)
         .ok_or_else(|| format!("未知厂商类型: {}", api_format))?;
     let base_url = kind.normalize_base_url(&base_url)?;
+    let api_key = crate::crypto::decrypt_secret(&api_key)?;
 
     Ok(crate::ai::LlmConfig {
         kind,

@@ -1,14 +1,49 @@
 import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem, ProviderKindInfo } from "../types";
+import { isTauri } from "../utils/tauri";
 
 // Vite proxy forwards /api/* to backend on localhost:3001
 const API_BASE = "/api";
 
+let cachedToken: string | null = null;
+let tokenPromise: Promise<string> | null = null;
+
+async function resolveApiToken(): Promise<string> {
+  if (cachedToken) return cachedToken;
+  if (!tokenPromise) {
+    tokenPromise = (async () => {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        return invoke<string>("get_api_token");
+      }
+      const res = await fetch(`${API_BASE}/auth/token`);
+      if (!res.ok) {
+        throw new Error("UNAUTHORIZED: 无法获取本地 API Token");
+      }
+      const data = (await res.json()) as { token: string };
+      return data.token;
+    })().then((token) => {
+      cachedToken = token;
+      return token;
+    }).catch((err) => {
+      tokenPromise = null;
+      throw err;
+    });
+  }
+  return tokenPromise;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = await resolveApiToken();
   let res: Response;
   try {
+    const headers = new Headers(options?.headers);
+    if (!headers.has("Content-Type") && options?.body) {
+      headers.set("Content-Type", "application/json");
+    }
+    headers.set("X-Lexio-Token", token);
     res = await fetch(`${API_BASE}${path}`, {
-      headers: { "Content-Type": "application/json", ...options?.headers },
       ...options,
+      headers,
     });
   } catch {
     throw new Error("NETWORK_ERROR: 无法连接后端服务");

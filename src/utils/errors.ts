@@ -4,6 +4,9 @@ export function formatApiError(err: unknown): string {
   if (/MISSING_API_KEY/i.test(raw) || /填写 API Key/i.test(raw)) {
     return "还没有配置 API Key。请点击左下角 ⚙ →「模型厂商」，填写密钥后再试。";
   }
+  if (/UNAUTHORIZED/i.test(raw) && /Token/i.test(raw)) {
+    return "本地服务鉴权失败，请重启应用后重试。";
+  }
   if (/AUTH_ERROR/i.test(raw) || /invalid api key/i.test(raw) || /unauthorized/i.test(raw)) {
     return "API Key 无效或权限不足，请到「设置 → 模型厂商」核对密钥。";
   }

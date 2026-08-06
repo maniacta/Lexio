@@ -1,12 +1,17 @@
-use axum::{routing::get, Router};
-use http::{Method, header};
+use axum::{
+    middleware,
+    routing::get,
+    Router,
+};
+use http::{header, Method};
 use tower_http::cors::CorsLayer;
-use crate::api::{sources, knowledge, quiz, learning, ai_routes, settings};
+use crate::api::{auth, sources, knowledge, quiz, learning, ai_routes, settings};
 
 /// Build the Axum application router.
 pub fn app(state: &'static ai_routes::AppState) -> Router {
     Router::new()
         .route("/api/health", get(health_check))
+        .route("/api/auth/token", get(auth::bootstrap_token))
         // Sources
         .route("/api/sources", get(sources::list_sources).post(sources::create_source))
         .route("/api/sources/{id}", get(sources::get_source))
@@ -39,6 +44,7 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
         .route("/api/settings/tasks/{task_name}", axum::routing::put(settings::set_task_model))
         .route("/api/settings/general", axum::routing::put(settings::update_general))
         .route("/api/settings/test-connection", axum::routing::post(settings::test_connection))
+        .layer(middleware::from_fn_with_state(state, auth::require_token))
         .layer(cors())
         .with_state(state)
 }
@@ -51,7 +57,10 @@ fn cors() -> CorsLayer {
             "https://tauri.localhost".parse::<axum::http::HeaderValue>().unwrap(),
         ])
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers([header::CONTENT_TYPE])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::HeaderName::from_static("x-lexio-token"),
+        ])
 }
 
 async fn health_check() -> &'static str {

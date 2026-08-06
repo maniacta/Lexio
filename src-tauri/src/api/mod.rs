@@ -4,3 +4,5 @@ pub mod quiz;
 pub mod learning;
 pub mod ai_routes;
 pub mod settings;
+pub mod blocking;
+pub mod auth;
