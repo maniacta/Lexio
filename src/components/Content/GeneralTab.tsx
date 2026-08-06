@@ -11,10 +11,6 @@ interface Props {
 export default function GeneralTab({ settings, onSaved }: Props) {
   const [theme, setTheme] = useState(settings.general.theme || "system");
   const [language, setLanguage] = useState(settings.general.language || "zh");
-  const [dataPath, setDataPath] = useState(settings.general.data_path || "");
-  const [searchEnabled, setSearchEnabled] = useState(
-    settings.general.search_enabled === "true"
-  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -35,15 +31,13 @@ export default function GeneralTab({ settings, onSaved }: Props) {
       await api.settings.updateGeneral({
         theme,
         language,
-        data_path: dataPath,
-        search_enabled: searchEnabled,
       });
       applyTheme(theme);
       applyLanguage(language);
-      setMessage("✅ 已保存");
+      setMessage("已保存");
       onSaved();
-    } catch (e: any) {
-      setMessage(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      setMessage(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -58,10 +52,15 @@ export default function GeneralTab({ settings, onSaved }: Props) {
             { value: "system", label: "跟随系统" },
             { value: "light", label: "亮色" },
             { value: "dark", label: "暗色" },
-          ].map(o => (
+          ].map((o) => (
             <label key={o.value} className="radio-label">
-              <input type="radio" name="theme" value={o.value}
-                checked={theme === o.value} onChange={e => handleThemeChange(e.target.value)} />
+              <input
+                type="radio"
+                name="theme"
+                value={o.value}
+                checked={theme === o.value}
+                onChange={(e) => handleThemeChange(e.target.value)}
+              />
               {o.label}
             </label>
           ))}
@@ -71,29 +70,11 @@ export default function GeneralTab({ settings, onSaved }: Props) {
 
       <div className="setting-group">
         <label className="setting-label">语言</label>
-        <select value={language} onChange={e => handleLanguageChange(e.target.value)}>
+        <select value={language} onChange={(e) => handleLanguageChange(e.target.value)}>
           <option value="zh">中文</option>
           <option value="en">English（界面文案暂仍为中文）</option>
         </select>
         <p className="setting-hint">完整英文界面尚未完成，目前仅更新页面语言标记。</p>
-      </div>
-
-      <div className="setting-group">
-        <label className="setting-label">数据存储路径</label>
-        <input type="text" value={dataPath}
-          onChange={e => setDataPath(e.target.value)}
-          placeholder="留空使用默认路径" />
-        <p className="setting-hint">自定义路径即将支持，当前仍使用应用默认目录。</p>
-      </div>
-
-      <div className="setting-group">
-        <label className="setting-label">网络搜索</label>
-        <label className="switch-label">
-          <input type="checkbox" checked={searchEnabled}
-            onChange={e => setSearchEnabled(e.target.checked)} />
-          {searchEnabled ? "已启用" : "已禁用"}
-        </label>
-        <p className="setting-hint">真实联网搜索尚未接入；研究主题时由 AI 模拟整理资料。</p>
       </div>
 
       <div className="setting-actions">

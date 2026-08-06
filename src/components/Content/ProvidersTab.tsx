@@ -210,7 +210,8 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
                 <label>厂商类型</label>
                 <input value={kindLabel(p)} disabled />
                 <label>Base URL</label>
-                <input value={formUrl} onChange={(e) => setFormUrl(e.target.value)} />
+                <input value={formUrl} readOnly title="仅允许官方 HTTPS 地址" />
+                <p className="resolved-hint">仅允许该厂商官方地址，保存时会自动校验。</p>
                 <label>API Key</label>
                 <input
                   type="password"
@@ -320,7 +321,8 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
             </p>
           )}
           <label>Base URL</label>
-          <input value={formUrl} onChange={(e) => setFormUrl(e.target.value)} />
+          <input value={formUrl} readOnly title="仅允许官方 HTTPS 地址" />
+          <p className="resolved-hint">使用官方地址，不可改为任意 URL（防止密钥外泄）。</p>
           <label>API Key</label>
           <input
             type="password"

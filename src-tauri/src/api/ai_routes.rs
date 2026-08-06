@@ -1,8 +1,12 @@
 use axum::{extract::State, http::StatusCode, Json};
-use crate::ai::{create_provider, extract_json_payload};
+use crate::ai::{create_provider, extract_json_payload, truncate_chars};
 use crate::db::Database;
 use crate::models::{AiStartResearchRequest, CreateKnowledgePointRequest, CreateLearningPlanRequest};
-use crate::repo::{self, source, knowledge};
+use crate::repo::{self, knowledge};
+
+const MAX_TOPIC_CHARS: usize = 500;
+const MAX_PROMPT_CHARS: usize = 24_000;
+const MAX_QUIZ_COUNT: usize = 10;
 
 // AppState holding db
 pub struct AppState {
@@ -13,6 +17,11 @@ pub async fn start_research(
     State(state): State<&'static AppState>,
     Json(req): Json<AiStartResearchRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    let topic = truncate_chars(req.topic.trim(), MAX_TOPIC_CHARS);
+    if topic.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "请输入要学习的主题".into()));
+    }
+
     // Resolve LLM config for chat task (DeepSeek Chat Completions)
     let llm_config = repo::settings::resolve_llm_config(state.db, "chat")
         .map_err(|e| {
@@ -27,11 +36,14 @@ pub async fn start_research(
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
     // Step 1: AI proposes learning resources as JSON (thinking disabled for speed)
-    let search_prompt = format!(
-        "用户想学习主题：{}。\n\
+    let search_prompt = truncate_chars(
+        &format!(
+            "用户想学习主题：{}。\n\
 请列出 3 份高质量学习资料。\n\
 返回 JSON 对象，格式严格为：{{\"items\":[{{\"title\":\"...\",\"description\":\"...\"}}]}}",
-        req.topic
+            topic
+        ),
+        MAX_PROMPT_CHARS,
     );
     let response = llm
         .chat_json(
@@ -54,33 +66,33 @@ pub async fn start_research(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Parse error: {} | {}", e, json_str.chars().take(200).collect::<String>())))?
     };
 
-    // Save as sources
-    let mut sources = Vec::new();
-    for r in &results {
-        let src_req = crate::models::CreateSourceRequest {
-            title: r.title.clone(),
+    let source_reqs: Vec<crate::models::CreateSourceRequest> = results
+        .into_iter()
+        .map(|r| crate::models::CreateSourceRequest {
+            title: r.title,
             source_type: "text".to_string(),
-            content: r.description.clone(),
+            content: r.description,
             tags: vec![],
             origin: "ai_search".to_string(),
             source_url: None,
-        };
-        let src = source::create_source(state.db, &src_req)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-        sources.push(src);
-    }
+        })
+        .collect();
 
-    // Step 2: Extract knowledge points from sources
-    let all_content: String = sources.iter()
+    // Step 2: Extract knowledge points (LLM only — no DB yet)
+    let all_content: String = source_reqs
+        .iter()
         .map(|s| format!("{}\n{}", s.title, s.content))
         .collect::<Vec<_>>()
         .join("\n---\n");
 
-    let kp_prompt = format!(
-        "从以下关于「{}」的内容中提取主要知识点。\n\n{}\n\n\
+    let kp_prompt = truncate_chars(
+        &format!(
+            "从以下关于「{}」的内容中提取主要知识点。\n\n{}\n\n\
 返回 JSON 对象，格式严格为：\
 {{\"items\":[{{\"title\":\"...\",\"summary\":\"一句话\",\"content\":\"2-3段详细说明\",\"tags\":[\"...\"]}}]}}",
-        req.topic, all_content
+            topic, all_content
+        ),
+        MAX_PROMPT_CHARS,
     );
     let kp_response = llm
         .chat_json(
@@ -101,24 +113,16 @@ pub async fn start_research(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Parse KPs: {} | {}", e, kp_json.chars().take(200).collect::<String>())))?
     };
 
-    let mut kps = Vec::new();
-    for kp_req in &kp_reqs {
-        let kp = knowledge::create_kp(state.db, kp_req)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-        kps.push(kp);
-    }
-
-    // Step 3: Create learning plan
-    let kp_ids: Vec<String> = kps.iter().map(|k| k.id.clone()).collect();
     let plan_req = CreateLearningPlanRequest {
-        title: req.topic.clone(),
-        goal: format!("Master the core concepts of {}", req.topic),
-        kp_ids,
+        title: topic.clone(),
+        goal: format!("Master the core concepts of {}", topic),
+        kp_ids: vec![], // filled inside persist with real ids
     };
-    let plan = repo::learning::create_plan(state.db, &plan_req)
+
+    // Step 3: atomic persist (sources + KPs + plan)
+    let result = repo::learning::persist_research_bundle(state.db, &source_reqs, &kp_reqs, &plan_req)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    let result = crate::models::AiResearchResult { sources, knowledge_points: kps, plan };
     Ok((StatusCode::OK, Json(serde_json::to_value(&result).unwrap())))
 }
 
@@ -133,6 +137,7 @@ pub async fn generate_quiz(
     State(state): State<&'static AppState>,
     Json(req): Json<GenerateQuizRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    let count = req.count.clamp(1, MAX_QUIZ_COUNT);
     let kp = knowledge::get_kp(state.db, &req.kp_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or((StatusCode::NOT_FOUND, "KP not found".to_string()))?;
@@ -147,8 +152,14 @@ pub async fn generate_quiz(
             (code, e)
         })?;
 
-    let mut questions = crate::ai::quiz_gen::generate_quizzes(llm_config, &kp.title, &kp.content, req.count).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let mut questions = crate::ai::quiz_gen::generate_quizzes(
+        llm_config,
+        &kp.title,
+        &truncate_chars(&kp.content, MAX_PROMPT_CHARS),
+        count,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     for q in &mut questions {
         q.kp_id = req.kp_id.clone();
@@ -156,7 +167,8 @@ pub async fn generate_quiz(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     }
 
-    Ok((StatusCode::CREATED, Json(serde_json::to_value(&questions).unwrap())))
+    let public: Vec<_> = questions.iter().map(|q| q.to_public()).collect();
+    Ok((StatusCode::CREATED, Json(serde_json::to_value(&public).unwrap())))
 }
 
 /// Update mastery record after quiz attempt
@@ -173,24 +185,29 @@ pub async fn update_mastery(
     let existing = repo::learning::get_mastery_by_kp(state.db, &req.kp_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
+    let record_id = existing
+        .as_ref()
+        .map(|r| r.id.clone())
+        .unwrap_or_else(crate::models::new_id);
+
     let input = match existing {
         Some(rec) => crate::learning::sm2::Sm2Input {
             ease_factor: rec.ease_factor,
             interval_days: rec.interval_days,
             repetitions: rec.repetitions,
             is_correct: req.is_correct,
-            response_quality: if req.is_correct { 5 } else { 3 },
+            response_quality: if req.is_correct { 4 } else { 1 },
         },
         None => crate::learning::sm2::Sm2Input {
             ease_factor: 2.5, interval_days: 0, repetitions: 0,
             is_correct: req.is_correct,
-            response_quality: if req.is_correct { 5 } else { 3 },
+            response_quality: if req.is_correct { 4 } else { 1 },
         },
     };
 
     let output = crate::learning::sm2::calculate(input);
     let record = crate::models::MasteryRecord {
-        id: crate::models::new_id(),
+        id: record_id,
         kp_id: req.kp_id,
         ease_factor: output.ease_factor,
         interval_days: output.interval_days,

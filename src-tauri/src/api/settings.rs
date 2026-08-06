@@ -30,7 +30,7 @@ pub async fn get_settings(
 
     // Build task_models map with resolved field
     let mut task_map = serde_json::Map::new();
-    for t in &["chat", "extract", "quiz_gen", "search"] {
+    for t in &["chat", "quiz_gen"] {
         let mapping = tasks.iter().find(|m| m.task_name == *t);
         let resolved = if mapping.as_ref().and_then(|m| m.model_id.as_ref()).is_some() {
             let model_id = mapping.as_ref().unwrap().model_id.as_ref().unwrap();
@@ -151,7 +151,7 @@ pub async fn set_task_model(
     Path(task_name): Path<String>,
     Json(req): Json<SetTaskModelRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let valid_tasks = ["chat", "extract", "quiz_gen", "search"];
+    let valid_tasks = ["chat", "quiz_gen"];
     if !valid_tasks.contains(&task_name.as_str()) {
         return Err((StatusCode::BAD_REQUEST, format!("Invalid task name: {}", task_name)));
     }

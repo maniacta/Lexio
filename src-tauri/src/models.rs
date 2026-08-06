@@ -69,6 +69,29 @@ pub struct QuizQuestion {
     pub explanation: String,
 }
 
+/// Client-facing question without answer/explanation (prevents peeking).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuizQuestionPublic {
+    pub id: String,
+    pub kp_id: String,
+    #[serde(rename = "type")]
+    pub question_type: String,
+    pub question: String,
+    pub options: Option<Vec<String>>,
+}
+
+impl QuizQuestion {
+    pub fn to_public(&self) -> QuizQuestionPublic {
+        QuizQuestionPublic {
+            id: self.id.clone(),
+            kp_id: self.kp_id.clone(),
+            question_type: self.question_type.clone(),
+            question: self.question.clone(),
+            options: self.options.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuizAttempt {
     pub id: String,
@@ -114,10 +137,12 @@ pub struct SubmitQuizAnswerRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuizResult {
-    pub question: QuizQuestion,
+    pub question: QuizQuestionPublic,
     pub user_answer: String,
     pub is_correct: bool,
     pub explanation: String,
+    /// Revealed only after submit.
+    pub correct_answer: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

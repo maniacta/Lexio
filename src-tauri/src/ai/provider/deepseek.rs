@@ -66,10 +66,12 @@ pub struct DeepSeekClient {
 
 impl DeepSeekClient {
     pub fn new(config: LlmConfig) -> Self {
-        Self {
-            config,
-            http: Client::new(),
-        }
+        let http = Client::builder()
+            .timeout(std::time::Duration::from_secs(90))
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+        Self { config, http }
     }
 
     fn completions_url(&self) -> String {

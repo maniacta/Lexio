@@ -9,7 +9,8 @@ pub async fn get_quiz_by_kp(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let questions = repo::quiz::get_questions_by_kp(state.db, &kp_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok(Json(serde_json::to_value(&questions).unwrap()))
+    let public: Vec<_> = questions.iter().map(|q| q.to_public()).collect();
+    Ok(Json(serde_json::to_value(&public).unwrap()))
 }
 
 pub async fn submit_answer(
@@ -21,15 +22,16 @@ pub async fn submit_answer(
     let question = questions.first()
         .ok_or((StatusCode::NOT_FOUND, "Question not found".to_string()))?;
 
-    let is_correct = req.user_answer.trim().eq_ignore_ascii_case(question.answer.trim());
+    let is_correct = repo::quiz::answers_match(&req.user_answer, &question.answer);
     let _attempt = repo::quiz::record_attempt(state.db, &req, is_correct)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let result = crate::models::QuizResult {
-        question: question.clone(),
+        question: question.to_public(),
         user_answer: req.user_answer,
         is_correct,
         explanation: question.explanation.clone(),
+        correct_answer: question.answer.clone(),
     };
 
     Ok(Json(serde_json::to_value(&result).unwrap()))

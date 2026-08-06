@@ -1,16 +1,20 @@
 import { useState, useCallback } from "react";
 import type { QuizQuestion, QuizResult } from "../types";
 import { api } from "../api/client";
+import { formatApiError } from "../utils/errors";
+import { notifyDataChanged } from "../utils/events";
 
 export function useQuiz(kpId: string | null) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadQuestions = useCallback(async () => {
     if (!kpId) return;
     setLoading(true);
+    setError(null);
     try {
       let qs = await api.quiz.getByKp(kpId);
       if (qs.length === 0) {
@@ -20,7 +24,7 @@ export function useQuiz(kpId: string | null) {
       setCurrentIndex(0);
       setResult(null);
     } catch (err) {
-      console.error("Failed to load quiz:", err);
+      setError(formatApiError(err));
     } finally {
       setLoading(false);
     }
@@ -30,12 +34,14 @@ export function useQuiz(kpId: string | null) {
     const q = questions[currentIndex];
     if (!q) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await api.quiz.submit(q.id, answer);
       setResult(res);
       await api.ai.updateMastery(q.kp_id, res.is_correct);
+      notifyDataChanged();
     } catch (err) {
-      console.error("Failed to submit:", err);
+      setError(formatApiError(err));
     } finally {
       setLoading(false);
     }
@@ -56,6 +62,7 @@ export function useQuiz(kpId: string | null) {
     currentQuestion,
     result,
     loading,
+    error,
     isFinished,
     loadQuestions,
     submitAnswer,

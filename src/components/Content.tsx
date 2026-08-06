@@ -12,12 +12,15 @@ interface Props {
 }
 
 export default function Content({ view, selectedKpId, onOpenSettings }: Props) {
+  // Keep ChatPanel mounted so conversation + plan state survive view switches.
   return (
     <main className="content">
-      {view === "settings" ? <SettingsView /> :
-       view === "learning" ? <LearningView kpId={selectedKpId} /> :
-       view === "review" ? <ReviewView /> :
-       <ChatPanel onOpenSettings={onOpenSettings} />}
+      <div className="content-pane" hidden={view !== "chat"}>
+        <ChatPanel onOpenSettings={onOpenSettings} />
+      </div>
+      {view === "settings" && <SettingsView />}
+      {view === "learning" && <LearningView kpId={selectedKpId} />}
+      {view === "review" && <ReviewView />}
     </main>
   );
 }

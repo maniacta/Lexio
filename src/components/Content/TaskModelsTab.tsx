@@ -8,10 +8,8 @@ interface Props {
 }
 
 const TASK_LABELS: Record<string, string> = {
-  chat: "对话聊天",
-  extract: "知识点提取",
+  chat: "对话 / 主题研究",
   quiz_gen: "测验生成",
-  search: "网络搜索",
 };
 
 export default function TaskModelsTab({ settings, onSaved }: Props) {
@@ -53,7 +51,9 @@ export default function TaskModelsTab({ settings, onSaved }: Props) {
 
   return (
     <div className="settings-tab taskmodels-tab">
-      <p className="tab-desc">为每项 AI 任务指定使用的模型。未指定时自动使用默认厂商。</p>
+      <p className="tab-desc">
+        为已接线的 AI 任务指定模型。未指定时使用默认厂商。主题研究与知识点提取共用「对话 / 主题研究」。
+      </p>
       {Object.entries(TASK_LABELS).map(([taskName, label]) => {
         const current = taskModels[taskName];
         return (

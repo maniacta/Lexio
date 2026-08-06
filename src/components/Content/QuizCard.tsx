@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { QuizQuestion, QuizResult } from "../../types";
 import "./QuizCard.css";
 
@@ -14,6 +14,11 @@ interface Props {
 export default function QuizCard({ question, result, loading, onSubmit, onNext, isLast }: Props) {
   const [selected, setSelected] = useState("");
   const [textAnswer, setTextAnswer] = useState("");
+
+  useEffect(() => {
+    setSelected("");
+    setTextAnswer("");
+  }, [question.id]);
 
   const handleSubmit = () => {
     const answer = question.type === "multiple_choice" ? selected : textAnswer;
@@ -74,6 +79,9 @@ export default function QuizCard({ question, result, loading, onSubmit, onNext, 
             {result.is_correct ? "✅ 正确！" : "❌ 不正确"}
           </div>
           <div className="quiz-result-explanation">{result.explanation}</div>
+          {result.correct_answer && !result.is_correct && (
+            <div className="quiz-result-explanation">正确答案：{result.correct_answer}</div>
+          )}
           <button className="quiz-next-btn" onClick={onNext}>
             {isLast ? "完成复习" : "下一题"}
           </button>

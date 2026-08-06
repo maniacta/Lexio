@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { QuizQuestion, ReviewResult } from "../../types";
 import { api } from "../../api/client";
+import { notifyDataChanged } from "../../utils/events";
 import QuizCard from "./QuizCard";
 
 interface Props {
@@ -22,16 +23,20 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
   const [kpTitle, setKpTitle] = useState("");
   const resultsRef = useRef<ReviewResult[]>([]);
   const usedQuestionIds = useRef<Set<string>>(new Set());
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const kpIdsKey = kpIds.join(",");
+  const completedRef = useRef(false);
 
   const fetchQuestion = useCallback(async (kpId: string) => {
     setLoading(true);
     setError(null);
+    setQuestion(null);
+    setResult(null);
     try {
-      // Get KP title for display
       const kp = await api.knowledge.get(kpId);
       setKpTitle(kp.title);
 
-      // Try to find an unused question from existing bank
       const existingQuestions = await api.quiz.getByKp(kpId);
       const unused = existingQuestions.filter((q) => !usedQuestionIds.current.has(q.id));
       let q: QuizQuestion;
@@ -39,7 +44,6 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
       if (unused.length > 0) {
         q = unused[Math.floor(Math.random() * unused.length)];
       } else {
-        // Generate new questions via AI
         const generated = await api.ai.generateQuiz(kpId, 1);
         if (generated.length === 0) throw new Error("无法生成题目");
         q = generated[0];
@@ -47,46 +51,47 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
 
       usedQuestionIds.current.add(q.id);
       setQuestion(q);
-      setResult(null);
-    } catch (e: any) {
-      // If can't generate, skip this KP
-      const reviewResult: ReviewResult = {
-        kp_id: kpId,
-        kp_title: kpTitle || "(加载失败)",
-        is_correct: false,
-        next_review_at: "",
-      };
-      resultsRef.current.push(reviewResult);
-      setError(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
       setQuestion(null);
-      setIndex((i) => i + 1);
+      // Stay on current index — do not auto-mark wrong or skip
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    completedRef.current = false;
+  }, [kpIdsKey]);
+
+  useEffect(() => {
     if (index < kpIds.length) {
       fetchQuestion(kpIds[index]);
-    } else {
-      onComplete(resultsRef.current);
+      return;
     }
-  }, [index, kpIds, fetchQuestion, onComplete]);
+    if (!completedRef.current) {
+      completedRef.current = true;
+      onCompleteRef.current(resultsRef.current);
+    }
+  }, [index, kpIdsKey, kpIds, fetchQuestion]);
 
   const submitAnswer = async (answer: string) => {
     if (!question) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await api.quiz.submit(question.id, answer);
       const mastery = await api.ai.updateMastery(question.kp_id, res.is_correct);
+      notifyDataChanged();
       setResult({
         user_answer: answer,
         is_correct: res.is_correct,
         explanation: res.explanation,
         next_review_at: mastery.next_review_at,
       });
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -102,6 +107,19 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
       });
     }
     setIndex((i) => i + 1);
+  };
+
+  const skipCurrent = () => {
+    setError(null);
+    setQuestion(null);
+    setResult(null);
+    setIndex((i) => i + 1);
+  };
+
+  const retryCurrent = () => {
+    if (index < kpIds.length) {
+      fetchQuestion(kpIds[index]);
+    }
   };
 
   if (index >= kpIds.length) {
@@ -123,10 +141,15 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
   if (error && !question) {
     return (
       <div className="review-session-error">
-        <p>⚠️ 出题失败：{error}</p>
-        <button className="btn-primary" onClick={nextQuestion}>
-          跳过，继续下一个
-        </button>
+        <p>出题失败：{error}</p>
+        <div className="form-actions">
+          <button type="button" className="btn-primary" onClick={retryCurrent}>
+            重试
+          </button>
+          <button type="button" className="btn-secondary" onClick={skipCurrent}>
+            跳过（不记错）
+          </button>
+        </div>
       </div>
     );
   }
@@ -146,6 +169,8 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
           第 {index + 1}/{kpIds.length} 题 — {kpTitle}
         </span>
       </div>
+
+      {error && <p className="review-session-inline-error">{error}</p>}
 
       <QuizCard
         question={question}

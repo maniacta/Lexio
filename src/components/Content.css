@@ -7,3 +7,15 @@
   overflow: hidden;
   background: transparent;
 }
+
+.content-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-pane[hidden] {
+  display: none !important;
+}

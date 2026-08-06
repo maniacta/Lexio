@@ -62,21 +62,29 @@ pub fn list_providers(db: &Database) -> Result<Vec<ProviderWithModels>, String> 
     let mut result = Vec::new();
     for p in providers {
         let models = list_models_by_provider(db, &p.id)?;
-        let api_key_masked = if p.api_key.len() > 4 {
-            format!("sk-****{}", &p.api_key[p.api_key.len()-4..])
-        } else if p.api_key.is_empty() {
-            String::new()
-        } else {
-            "****".to_string()
-        };
         result.push(ProviderWithModels {
-            id: p.id, name: p.name, base_url: p.base_url,
-            api_key: api_key_masked, api_format: p.api_format,
-            is_preset: p.is_preset, is_default: p.is_default,
-            created_at: p.created_at, models,
+            id: p.id,
+            name: p.name,
+            base_url: p.base_url,
+            api_key: mask_api_key(&p.api_key),
+            api_format: p.api_format,
+            is_preset: p.is_preset,
+            is_default: p.is_default,
+            created_at: p.created_at,
+            models,
         });
     }
     Ok(result)
+}
+
+fn mask_api_key(api_key: &str) -> String {
+    if api_key.is_empty() {
+        String::new()
+    } else if api_key.len() > 4 {
+        format!("sk-****{}", &api_key[api_key.len() - 4..])
+    } else {
+        "****".to_string()
+    }
 }
 
 pub fn get_provider(db: &Database, id: &str) -> Result<Option<ModelProvider>, String> {
@@ -99,21 +107,12 @@ pub fn get_provider(db: &Database, id: &str) -> Result<Option<ModelProvider>, St
 pub fn create_provider(db: &Database, req: &CreateProviderRequest) -> Result<ModelProvider, String> {
     let kind = crate::ai::ProviderKind::parse(&req.kind)
         .ok_or_else(|| "请选择已支持的厂商类型：deepseek / openai / anthropic".to_string())?;
-    let base_url = req
-        .base_url
-        .as_deref()
-        .unwrap_or("")
-        .trim();
-    let base_url = if base_url.is_empty() {
-        kind.default_base_url()
-    } else {
-        base_url
-    };
+    let base_url = kind.normalize_base_url(req.base_url.as_deref().unwrap_or(""))?;
     create_provider_by_kind(
         db,
         kind,
         &req.api_key,
-        base_url,
+        &base_url,
         req.set_default.unwrap_or(false),
     )
 }
@@ -126,6 +125,13 @@ pub fn create_provider_by_kind(
     base_url: &str,
     set_default: bool,
 ) -> Result<ModelProvider, String> {
+    let url = kind.normalize_base_url(base_url)?;
+    if set_default && !kind.is_implemented() {
+        return Err(format!(
+            "「{}」调用尚未接入，不能设为默认厂商",
+            kind.display_name()
+        ));
+    }
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let exists: i32 = conn
@@ -152,11 +158,6 @@ pub fn create_provider_by_kind(
 
     let name = kind.display_name();
     let api_format = kind.as_str();
-    let url = if base_url.trim().is_empty() {
-        kind.default_base_url()
-    } else {
-        base_url.trim()
-    };
 
     conn.execute(
         "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default, created_at)
@@ -185,8 +186,8 @@ pub fn create_provider_by_kind(
     Ok(ModelProvider {
         id,
         name: name.to_string(),
-        base_url: url.to_string(),
-        api_key: api_key.to_string(),
+        base_url: url,
+        api_key: mask_api_key(api_key),
         api_format: api_format.to_string(),
         is_preset: false,
         is_default,
@@ -195,6 +196,18 @@ pub fn create_provider_by_kind(
 }
 
 pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> Result<(), String> {
+    let existing = get_provider(db, id)?.ok_or_else(|| "厂商不存在".to_string())?;
+    let kind = crate::ai::ProviderKind::parse(&existing.api_format)
+        .ok_or_else(|| format!("未知厂商类型: {}", existing.api_format))?;
+    let url = kind.normalize_base_url(&req.base_url)?;
+
+    if req.is_default == Some(true) && !kind.is_implemented() {
+        return Err(format!(
+            "「{}」调用尚未接入，不能设为默认厂商",
+            kind.display_name()
+        ));
+    }
+
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     if req.is_default == Some(true) {
         conn.execute("UPDATE model_providers SET is_default = 0", [])
@@ -206,20 +219,20 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
         if !key.is_empty() {
             conn.execute(
                 "UPDATE model_providers SET base_url=?1, api_key=?2 WHERE id=?3",
-                rusqlite::params![req.base_url, key, id],
+                rusqlite::params![url, key, id],
             )
             .map_err(|e| e.to_string())?;
         } else {
             conn.execute(
                 "UPDATE model_providers SET base_url=?1 WHERE id=?2",
-                rusqlite::params![req.base_url, id],
+                rusqlite::params![url, id],
             )
             .map_err(|e| e.to_string())?;
         }
     } else {
         conn.execute(
             "UPDATE model_providers SET base_url=?1 WHERE id=?2",
-            rusqlite::params![req.base_url, id],
+            rusqlite::params![url, id],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -462,10 +475,11 @@ pub fn resolve_llm_config(db: &Database, task_name: &str) -> Result<crate::ai::L
 
     let kind = crate::ai::ProviderKind::parse(&provider.api_format)
         .ok_or_else(|| format!("未知厂商类型: {}", provider.api_format))?;
+    let base_url = kind.normalize_base_url(&provider.base_url)?;
 
     Ok(crate::ai::LlmConfig {
         kind,
-        base_url: provider.base_url,
+        base_url,
         api_key: provider.api_key,
         model: model.model_name,
         temperature: model.temperature,
@@ -728,6 +742,7 @@ pub fn resolve_for_test(db: &Database, provider_id: &str, model_name: &str) -> R
 
     let kind = crate::ai::ProviderKind::parse(&api_format)
         .ok_or_else(|| format!("未知厂商类型: {}", api_format))?;
+    let base_url = kind.normalize_base_url(&base_url)?;
 
     Ok(crate::ai::LlmConfig {
         kind,

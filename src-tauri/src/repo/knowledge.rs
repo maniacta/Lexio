@@ -82,8 +82,25 @@ pub fn search_kps(db: &Database, query: &str) -> Result<Vec<KnowledgePoint>, Str
 
 pub fn delete_kp(db: &Database, id: &str) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM knowledge_points WHERE id = ?1", [id])
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    // Cascade related rows (schema FKs have no ON DELETE CASCADE)
+    tx.execute(
+        "DELETE FROM quiz_attempts WHERE question_id IN (SELECT id FROM quiz_questions WHERE kp_id = ?1)",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM quiz_questions WHERE kp_id = ?1", [id])
         .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM mastery_records WHERE kp_id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM relations WHERE from_kp_id = ?1 OR to_kp_id = ?1",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM knowledge_points WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 

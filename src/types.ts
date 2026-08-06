@@ -35,8 +35,9 @@ export interface QuizQuestion {
   type: "multiple_choice" | "fill_blank" | "analysis";
   question: string;
   options: string[] | null;
-  answer: string;
-  explanation: string;
+  /** Omitted on list/generate; only present after some legacy responses. */
+  answer?: string;
+  explanation?: string;
 }
 
 export interface QuizResult {
@@ -44,6 +45,7 @@ export interface QuizResult {
   user_answer: string;
   is_correct: boolean;
   explanation: string;
+  correct_answer?: string;
 }
 
 export interface LearningPlan {

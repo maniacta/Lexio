@@ -45,6 +45,43 @@ impl ProviderKind {
         }
     }
 
+    /// Hosts allowed for this vendor — blocks SSRF via arbitrary base_url.
+    pub fn allowed_hosts(self) -> &'static [&'static str] {
+        match self {
+            Self::DeepSeek => &["api.deepseek.com"],
+            Self::OpenAi => &["api.openai.com"],
+            Self::Anthropic => &["api.anthropic.com"],
+        }
+    }
+
+    /// Validate and normalize base_url. Empty input → official default.
+    /// Rejects non-HTTPS and hosts outside the vendor allowlist.
+    pub fn normalize_base_url(self, input: &str) -> Result<String, String> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Ok(self.default_base_url().to_string());
+        }
+
+        let parsed = reqwest::Url::parse(trimmed)
+            .map_err(|_| "Base URL 格式无效，请使用官方 HTTPS 地址".to_string())?;
+        if parsed.scheme() != "https" {
+            return Err("Base URL 必须使用 HTTPS".into());
+        }
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| "Base URL 缺少主机名".to_string())?;
+        if !self.allowed_hosts().iter().any(|h| *h == host) {
+            return Err(format!(
+                "「{}」仅允许官方地址（{}），当前主机「{}」不被接受",
+                self.display_name(),
+                self.default_base_url(),
+                host
+            ));
+        }
+        // Canonicalize to the known official endpoint (drops path/query tricks).
+        Ok(self.default_base_url().to_string())
+    }
+
     pub fn is_implemented(self) -> bool {
         matches!(self, Self::DeepSeek)
     }
@@ -240,4 +277,13 @@ pub fn extract_json_payload(response: &str) -> &str {
         return &trimmed[start..];
     }
     trimmed
+}
+
+/// Truncate by Unicode scalar values to keep LLM prompts bounded.
+pub fn truncate_chars(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        return input.to_string();
+    }
+    let truncated: String = input.chars().take(max_chars).collect();
+    format!("{}\n…(truncated)", truncated)
 }

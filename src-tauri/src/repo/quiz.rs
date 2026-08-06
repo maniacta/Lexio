@@ -73,6 +73,27 @@ pub fn get_attempts_by_kp(db: &Database, kp_id: &str) -> Result<Vec<QuizAttempt>
     Ok(attempts)
 }
 
+/// Normalize answers for comparison: ignore case, whitespace, and common punctuation.
+pub fn answers_match(user: &str, expected: &str) -> bool {
+    normalize_answer(user) == normalize_answer(expected)
+}
+
+fn normalize_answer(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_whitespace())
+        .filter(|c| {
+            !matches!(
+                *c,
+                ',' | '.' | '!' | '?' | ';' | ':' | '"' | '\'' | '`'
+                    | '，' | '。' | '！' | '？' | '；' | '：' | '“' | '”' | '‘' | '’'
+                    | '(' | ')' | '（' | '）' | '[' | ']' | '【' | '】'
+                    | '、' | '·' | '…'
+            )
+        })
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
 fn question_from_row(row: &rusqlite::Row) -> rusqlite::Result<QuizQuestion> {
     let options_str: Option<String> = row.get(4)?;
     Ok(QuizQuestion {

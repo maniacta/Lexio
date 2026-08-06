@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { ReviewItem, ReviewResult } from "../../types";
 import { api } from "../../api/client";
 import ReviewList from "./ReviewList";
@@ -16,36 +16,36 @@ export default function ReviewView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadItems = async () => {
+  const loadItems = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await api.learning.getDueReviewsWithKp();
       setItems(data);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadItems();
-  }, []);
+  }, [loadItems]);
 
   const handleStart = (ids: string[]) => {
     setSelectedIds(ids);
     setPhase("session");
   };
 
-  const handleComplete = (sessionResults: ReviewResult[]) => {
+  const handleComplete = useCallback((sessionResults: ReviewResult[]) => {
     setResults(sessionResults);
     setPhase("summary");
-  };
+  }, []);
 
   const handleBack = () => {
     setPhase("list");
-    loadItems(); // refresh due list
+    loadItems();
   };
 
   if (loading) {

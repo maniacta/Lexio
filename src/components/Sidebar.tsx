@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import SourceList from "./Sidebar/SourceList";
 import KpList from "./Sidebar/KpList";
 import { usePlatform, getRunMode } from "../utils/tauri";
 import { api } from "../api/client";
+import { DATA_CHANGED } from "../utils/events";
 import type { View } from "./Layout";
 import "./Sidebar.css";
 
@@ -19,9 +20,21 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
   const [tab, setTab] = useState<"sources" | "knowledge">("knowledge");
   const [dueCount, setDueCount] = useState<number>(0);
 
+  const refreshDue = useCallback(() => {
+    api.learning
+      .getDueReviews()
+      .then((records) => setDueCount(records.length))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
-    api.learning.getDueReviews().then(records => setDueCount(records.length)).catch(() => {});
-  }, [currentView]);
+    refreshDue();
+  }, [currentView, refreshDue]);
+
+  useEffect(() => {
+    window.addEventListener(DATA_CHANGED, refreshDue);
+    return () => window.removeEventListener(DATA_CHANGED, refreshDue);
+  }, [refreshDue]);
 
   return (
     <aside className="sidebar">

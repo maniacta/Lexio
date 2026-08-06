@@ -13,19 +13,56 @@ interface Props {
 
 export default function LearningView({ kpId }: Props) {
   const [kp, setKp] = useState<KnowledgePoint | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const quiz = useQuiz(kpId);
 
   useEffect(() => {
-    if (!kpId) return;
-    api.knowledge.get(kpId).then(setKp).catch(console.error);
+    if (!kpId) {
+      setKp(null);
+      setLoadError(null);
+      return;
+    }
+    // Clear immediately so previous KP content never flashes
+    setKp(null);
+    setLoadError(null);
     setShowQuiz(false);
+    let cancelled = false;
+    api.knowledge
+      .get(kpId)
+      .then((data) => {
+        if (!cancelled) setKp(data);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setLoadError(e instanceof Error ? e.message : String(e));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [kpId]);
 
-  if (!kpId || !kp) {
+  if (!kpId) {
     return (
       <div className="learning-empty">
         <p>选择一个知识点开始学习</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="learning-empty">
+        <p>加载失败：{loadError}</p>
+      </div>
+    );
+  }
+
+  if (!kp) {
+    return (
+      <div className="learning-empty">
+        <p>加载中…</p>
       </div>
     );
   }
@@ -57,6 +94,7 @@ export default function LearningView({ kpId }: Props) {
           <div className="quiz-section">
             <h3>测验</h3>
             {quiz.loading && !quiz.currentQuestion && <p>加载题目中...</p>}
+            {quiz.error && <p className="quiz-error">{quiz.error}</p>}
             {quiz.currentQuestion && (
               <QuizCard
                 question={quiz.currentQuestion}
