@@ -15,7 +15,14 @@ pub async fn start_research(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
     // Resolve LLM config for chat task
     let llm_config = repo::settings::resolve_llm_config(state.db, "chat")
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("No model configured: {}", e)))?;
+        .map_err(|e| {
+            let code = if e.contains("MISSING_API_KEY") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::SERVICE_UNAVAILABLE
+            };
+            (code, e)
+        })?;
     let llm = LlmClient::new(llm_config);
 
     // Step 1: AI searches web for sources (stub: use LLM to generate search results)
@@ -106,7 +113,14 @@ pub async fn generate_quiz(
         .ok_or((StatusCode::NOT_FOUND, "KP not found".to_string()))?;
 
     let llm_config = repo::settings::resolve_llm_config(state.db, "quiz_gen")
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("No model configured: {}", e)))?;
+        .map_err(|e| {
+            let code = if e.contains("MISSING_API_KEY") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::SERVICE_UNAVAILABLE
+            };
+            (code, e)
+        })?;
 
     let mut questions = crate::ai::quiz_gen::generate_quizzes(llm_config, &kp.title, &kp.content, req.count).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;

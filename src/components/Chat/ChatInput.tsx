@@ -31,7 +31,7 @@ export default function ChatInput({ onSend, disabled }: Props) {
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={disabled ? "处理中..." : "输入你想学的内容，或者粘贴资料..."}
+        placeholder={disabled ? "处理中..." : "输入想学的主题，例如：Rust 所有权"}
         disabled={disabled}
       />
       <button onClick={handleSend} disabled={disabled || !input.trim()}>

@@ -25,7 +25,8 @@ body {
 }
 
 /* ── Design tokens ── */
-:root {
+:root,
+html.theme-light {
   /* Colors */
   --color-text-primary: #1a1a2e;
   --color-text-secondary: #6c757d;
@@ -53,7 +54,7 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.theme-light):not(.theme-dark) {
     --color-text-primary: #e0e0f0;
     --color-text-secondary: #9ca3af;
     --color-text-muted: #6b7280;
@@ -68,4 +69,20 @@ body {
     --color-sidebar-hover: rgba(255, 255, 255, 0.05);
     --color-sidebar-active: rgba(139, 124, 247, 0.15);
   }
+}
+
+html.theme-dark {
+  --color-text-primary: #e0e0f0;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-bg: #111118;
+  --color-surface: #1a1a26;
+  --color-border: #2a2a3a;
+  --color-accent: #8b7cf7;
+  --color-accent-hover: #9d8ff8;
+  --color-success: #34d399;
+  --color-sidebar: #0e0e1a;
+  --color-sidebar-text: #9ca3af;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.05);
+  --color-sidebar-active: rgba(139, 124, 247, 0.15);
 }

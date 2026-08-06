@@ -25,6 +25,13 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
 
   return (
     <aside className="sidebar">
+      <button
+        type="button"
+        className={`sidebar-chat-btn ${currentView === "chat" ? "active" : ""}`}
+        onClick={() => onNavigate("chat")}
+      >
+        聊天
+      </button>
       <div className="sidebar-tabs">
         <button
           className={`sidebar-tab ${tab === "knowledge" ? "active" : ""}`}

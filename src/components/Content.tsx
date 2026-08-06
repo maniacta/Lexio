@@ -8,15 +8,16 @@ import "./Content.css";
 interface Props {
   view: View;
   selectedKpId: string | null;
+  onOpenSettings?: () => void;
 }
 
-export default function Content({ view, selectedKpId }: Props) {
+export default function Content({ view, selectedKpId, onOpenSettings }: Props) {
   return (
     <main className="content">
       {view === "settings" ? <SettingsView /> :
        view === "learning" ? <LearningView kpId={selectedKpId} /> :
        view === "review" ? <ReviewView /> :
-       <ChatPanel />}
+       <ChatPanel onOpenSettings={onOpenSettings} />}
     </main>
   );
 }

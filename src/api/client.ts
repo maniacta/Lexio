@@ -4,13 +4,18 @@ import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizRes
 const API_BASE = "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    ...options,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      ...options,
+    });
+  } catch {
+    throw new Error("NETWORK_ERROR: 无法连接后端服务");
+  }
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API error ${res.status}: ${err}`);
+    const err = (await res.text()).trim();
+    throw new Error(err || `API error ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

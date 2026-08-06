@@ -53,6 +53,21 @@ impl LlmClient {
         Self { config, client: Client::new() }
     }
 
+    fn friendly_http_error(status: u16, body: &str) -> String {
+        let lower = body.to_lowercase();
+        if status == 401 || status == 403 || lower.contains("invalid api key") || lower.contains("unauthorized") {
+            return "AUTH_ERROR: API Key 无效或权限不足，请在设置中检查密钥".into();
+        }
+        if status == 429 || lower.contains("rate limit") || lower.contains("quota") {
+            return "QUOTA_ERROR: 请求过于频繁或额度不足，请稍后再试".into();
+        }
+        if status >= 500 {
+            return format!("PROVIDER_ERROR: 模型服务暂时不可用（HTTP {}）", status);
+        }
+        let snippet: String = body.chars().take(160).collect();
+        format!("LLM_ERROR: 模型请求失败（HTTP {}）{}", status, if snippet.is_empty() { String::new() } else { format!(": {}", snippet) })
+    }
+
     /// 发送非流式请求，返回完整回复
     pub async fn chat(&self, system_prompt: &str, user_prompt: &str) -> Result<String, String> {
         let messages = vec![
@@ -73,9 +88,16 @@ impl LlmClient {
             .json(&req)
             .send()
             .await
-            .map_err(|e| format!("LLM request failed: {}", e))?;
+            .map_err(|e| format!("NETWORK_ERROR: 无法连接模型服务（{}）", e))?;
 
-        let body: ChatResponse = resp.json().await.map_err(|e| format!("Parse error: {}", e))?;
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| format!("Read error: {}", e))?;
+        if !status.is_success() {
+            return Err(Self::friendly_http_error(status.as_u16(), &text));
+        }
+
+        let body: ChatResponse = serde_json::from_str(&text)
+            .map_err(|e| format!("Parse error: {}", e))?;
         body.choices
             .first()
             .map(|c| c.message.content.clone())
@@ -106,7 +128,13 @@ impl LlmClient {
             .json(&req)
             .send()
             .await
-            .map_err(|e| format!("LLM request failed: {}", e))?;
+            .map_err(|e| format!("NETWORK_ERROR: 无法连接模型服务（{}）", e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(Self::friendly_http_error(status, &text));
+        }
 
         use futures_util::StreamExt;
         let mut stream = resp.bytes_stream();

@@ -1,9 +1,17 @@
+import { useEffect } from "react";
 import { useSources } from "../../hooks/useSources";
+import { DATA_CHANGED } from "../../utils/events";
 import "./SourceList.css";
 
 export default function SourceList() {
-  const { sources, loading, toggleHidden } = useSources();
+  const { sources, loading, refresh, toggleHidden } = useSources();
   const visible = sources.filter((s) => !s.hidden);
+
+  useEffect(() => {
+    const onChange = () => { refresh(); };
+    window.addEventListener(DATA_CHANGED, onChange);
+    return () => window.removeEventListener(DATA_CHANGED, onChange);
+  }, [refresh]);
 
   return (
     <div className="source-list">

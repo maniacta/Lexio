@@ -1,4 +1,6 @@
 import { useKnowledge } from "../../hooks/useKnowledge";
+import { useEffect } from "react";
+import { DATA_CHANGED } from "../../utils/events";
 import "./KpList.css";
 
 interface Props {
@@ -7,7 +9,13 @@ interface Props {
 }
 
 export default function KpList({ onSelect, selectedId }: Props) {
-  const { kps, loading } = useKnowledge();
+  const { kps, loading, refresh } = useKnowledge();
+
+  useEffect(() => {
+    const onChange = () => { refresh(); };
+    window.addEventListener(DATA_CHANGED, onChange);
+    return () => window.removeEventListener(DATA_CHANGED, onChange);
+  }, [refresh]);
 
   return (
     <div className="kp-list">
@@ -23,6 +31,9 @@ export default function KpList({ onSelect, selectedId }: Props) {
           <span className="kp-summary">{kp.summary}</span>
         </div>
       ))}
+      {!loading && kps.length === 0 && (
+        <p className="list-empty">暂无知识点，去聊天里开一个主题吧</p>
+      )}
     </div>
   );
 }

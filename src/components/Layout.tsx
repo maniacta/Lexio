@@ -16,9 +16,17 @@ export default function Layout() {
 
   return (
     <div className="layout">
-      <Sidebar onSelectKp={handleSelectKp} selectedKpId={selectedKpId ?? undefined}
-        currentView={view} onNavigate={setView} />
-      <Content view={view} selectedKpId={selectedKpId} />
+      <Sidebar
+        onSelectKp={handleSelectKp}
+        selectedKpId={selectedKpId ?? undefined}
+        currentView={view}
+        onNavigate={setView}
+      />
+      <Content
+        view={view}
+        selectedKpId={selectedKpId}
+        onOpenSettings={() => setView("settings")}
+      />
     </div>
   );
 }

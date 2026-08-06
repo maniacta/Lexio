@@ -334,6 +334,13 @@ pub fn resolve_llm_config(db: &Database, task_name: &str) -> Result<crate::ai::l
         get_default_model(db)?
     };
 
+    if provider.api_key.trim().is_empty() {
+        return Err(format!(
+            "MISSING_API_KEY: 请先在设置 → 模型厂商中为「{}」填写 API Key",
+            provider.name
+        ));
+    }
+
     Ok(crate::ai::llm::LlmConfig {
         base_url: provider.base_url,
         api_key: provider.api_key,

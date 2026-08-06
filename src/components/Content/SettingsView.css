@@ -68,6 +68,13 @@
   color: var(--color-text-primary);
 }
 
+.setting-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
 .setting-options {
   display: flex;
   gap: var(--spacing-md);
