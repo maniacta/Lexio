@@ -14,7 +14,6 @@ use db::Database;
 use tauri::Manager;
 use tokio::net::TcpListener;
 use tracing_subscriber::prelude::*;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 /// Retention window (days) for rotated log files. tracing-appender rotates
 /// files daily but never deletes them, so cleanup is done at startup.
@@ -40,6 +39,35 @@ pub fn cleanup_old_log_files(logs_dir: &std::path::Path, retention_days: i64) {
             }
         }
     }
+}
+
+/// Initialize the tracing subscriber (file logs + audit DB layer) and apply
+/// retention cleanup. Idempotent for process lifetime; call once at startup.
+pub fn init_logging(db: &'static Database, logs_dir: &std::path::Path) {
+    std::fs::create_dir_all(logs_dir).unwrap();
+    cleanup_old_log_files(logs_dir, FILE_LOG_RETENTION_DAYS);
+
+    let file_appender =
+        tracing_appender::rolling::daily(logs_dir, "lexio.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    // Keep the guard alive for the process lifetime.
+    Box::leak(Box::new(guard));
+
+    let log_level =
+        std::env::var("LEXIO_LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
+    let env_filter = tracing_subscriber::EnvFilter::try_new(&log_level)
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    let audit_layer = crate::tracing_layer::AuditDbLayer::new(db);
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking)
+        .with_target(true);
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(audit_layer)
+        .with(file_layer)
+        .init();
 }
 
 #[tauri::command]
@@ -94,33 +122,7 @@ pub fn run() {
 
             // ── Initialize tracing subscriber ──
             let logs_dir = app_dir.join("logs");
-            std::fs::create_dir_all(&logs_dir).unwrap();
-            cleanup_old_log_files(&logs_dir, FILE_LOG_RETENTION_DAYS);
-
-            let file_appender = RollingFileAppender::new(
-                Rotation::DAILY,
-                &logs_dir,
-                "lexio.log",
-            );
-            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-            // Keep the guard alive for the process lifetime.
-            let _guard = Box::leak(Box::new(guard));
-
-            let log_level =
-                std::env::var("LEXIO_LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
-            let env_filter = tracing_subscriber::EnvFilter::try_new(&log_level)
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
-
-            let audit_layer = crate::tracing_layer::AuditDbLayer::new(db);
-            let file_layer = tracing_subscriber::fmt::layer()
-                .with_writer(non_blocking)
-                .with_target(true);
-
-            tracing_subscriber::registry()
-                .with(env_filter)
-                .with(audit_layer)
-                .with(file_layer)
-                .init();
+            crate::init_logging(db, &logs_dir);
             tracing::info!(target: "audit", source = "backend", category = "system", action = "startup", user_action = "应用启动");
 
             let api_token = crypto::generate_api_token();
