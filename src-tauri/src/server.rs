@@ -5,7 +5,9 @@ use axum::{
 };
 use http::{header, Method};
 use tower_http::cors::CorsLayer;
-use crate::api::{auth, sources, knowledge, quiz, learning, ai_routes, settings, relation};
+use crate::api::{
+    auth, chat_routes, sources, knowledge, quiz, learning, ai_routes, settings, relation,
+};
 
 /// Build the Axum application router.
 pub fn app(state: &'static ai_routes::AppState) -> Router {
@@ -32,6 +34,14 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
         .route("/api/ai/research", axum::routing::post(ai_routes::start_research))
         .route("/api/ai/generate-quiz", axum::routing::post(ai_routes::generate_quiz))
         .route("/api/ai/update-mastery", axum::routing::post(ai_routes::update_mastery))
+        .route("/api/ai/chat", axum::routing::post(ai_routes::chat))
+        // Chat sessions
+        .route("/api/chat/sessions",
+            get(chat_routes::list_sessions).post(chat_routes::create_session))
+        .route("/api/chat/sessions/{id}", axum::routing::delete(chat_routes::delete_session))
+        .route("/api/chat/sessions/{id}/messages", get(chat_routes::get_messages))
+        .route("/api/chat/sessions/{id}/plan", axum::routing::post(chat_routes::set_session_plan))
+        .route("/api/chat/messages", axum::routing::post(chat_routes::append_message))
         // Settings
         .route("/api/settings", get(settings::get_settings))
         .route("/api/settings/provider-kinds", get(settings::list_provider_kinds))

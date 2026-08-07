@@ -1,7 +1,9 @@
 use crate::db::Database;
 use crate::models::new_id;
 use chrono::Utc;
+use serde::Serialize;
 
+#[derive(Debug, Clone, Serialize)]
 pub struct ChatSession {
     pub id: String,
     pub title: String,
@@ -10,6 +12,7 @@ pub struct ChatSession {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct ChatMessage {
     pub id: String,
     pub session_id: String,
