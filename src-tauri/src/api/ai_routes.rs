@@ -207,6 +207,116 @@ pub async fn update_mastery(
     Ok(Json(serde_json::to_value(&record).unwrap()))
 }
 
+// ── Chat ──
+
+#[derive(serde::Deserialize)]
+pub struct ChatRequest {
+    pub messages: Vec<ChatMessageItem>,
+    pub context: Option<ChatContext>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChatMessageItem {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChatContext {
+    pub plan_id: Option<String>,
+    pub current_kp_id: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ChatAction {
+    #[serde(rename = "type")]
+    pub action_type: String,
+    pub label: String,
+    pub payload: serde_json::Value,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ChatResponse {
+    pub content: String,
+    pub actions: Vec<ChatAction>,
+}
+
+pub async fn chat(
+    State(state): State<&'static AppState>,
+    Json(req): Json<ChatRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    use crate::repo::{knowledge, learning};
+
+    let llm_config = match blocking::run(move || repo::settings::resolve_llm_config(state.db, "chat")).await
+    {
+        Ok(v) => v,
+        Err((_, e)) => return Err(map_llm_resolve_err(e)),
+    };
+    let llm = crate::ai::create_provider(llm_config)
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, e))?;
+
+    // Build system prompt with context
+    let mut system_prompt = String::from(
+        "你是 Lexio 学习教练。用中文回复。"
+    );
+
+    if let Some(ref ctx) = req.context {
+        if let Some(ref plan_id) = ctx.plan_id {
+            let plan_id = plan_id.clone();
+            if let Ok(Some(plan)) = blocking::run(move || learning::get_plan(state.db, &plan_id)).await {
+                system_prompt.push_str(&format!("\n当前学习计划：{}（{}）", plan.title, plan.goal));
+                if !plan.kp_ids.is_empty() {
+                    let kp_ids = plan.kp_ids.clone();
+                    if let Ok(kps) = blocking::run(move || knowledge::list_kps_by_ids(state.db, &kp_ids)).await {
+                        system_prompt.push_str("\n知识点列表：");
+                        for kp in &kps {
+                            system_prompt.push_str(&format!("\n- {} (id={}): {}", kp.title, kp.id, kp.summary));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(ref kp_id) = ctx.current_kp_id {
+            let kp_id = kp_id.clone();
+            if let Ok(Some(kp)) = blocking::run(move || knowledge::get_kp(state.db, &kp_id)).await {
+                system_prompt.push_str(&format!("\n正在学习：{}\n{}", kp.title, kp.content));
+            }
+        }
+    }
+
+    system_prompt.push_str(&concat!(
+        "\n\n行为指南：",
+        "\n- 用户说\"开始学习/学XX/教我\"时，引导选择知识点（返回 navigate_learning action，kpId 用上面列出的 id）",
+        "\n- 用户说\"出题/测验\"时，建议进入测验模式（返回 start_quiz action）",
+        "\n- 用户问概念问题时，用已有知识点内容回答",
+        "\n- 如果没有对应知识点，建议用户\"先研究这个主题\"",
+        "\n- 用户表达想学新主题（如\"我想学X\"、\"帮我研究X\"）时，返回 start_research action，payload 带 topic（用户想研究的内容原文）",
+        "\n- 始终返回 JSON，不要包含 markdown 代码块标记",
+        "\n\n返回格式（严格 JSON，一行写完不要换行）：",
+        "\n{\"content\":\"你的markdown回复\",\"actions\":[{\"type\":\"navigate_learning\",\"label\":\"进入学习\",\"payload\":{\"kpId\":\"知识点id\",\"kpTitle\":\"知识点名称\"}}]}",
+        "\naction type 只能是 navigate_learning / start_quiz / view_source / start_research，不需要 action 时 actions 为空数组 []",
+    ));
+
+    // Build user prompt from message history
+    let user_prompt = req.messages.iter()
+        .map(|m| format!("{}: {}", m.role, m.content))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let response = llm.chat(&system_prompt, &user_prompt).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // Parse JSON — fallback to raw text if parsing fails
+    let json_str = crate::ai::extract_json_payload(&response);
+    let chat_resp: ChatResponse = serde_json::from_str(json_str)
+        .unwrap_or_else(|_| ChatResponse {
+            content: response,
+            actions: vec![],
+        });
+
+    Ok((StatusCode::OK, Json(serde_json::to_value(&chat_resp).unwrap())))
+}
+
 /// SM-2 advances at most once per day per KP.
 fn should_advance_sm2(
     last_reviewed_at: Option<&str>,
