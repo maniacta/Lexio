@@ -156,6 +156,17 @@ pub async fn update_mastery(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let record = blocking::run(move || {
         let existing = repo::learning::get_mastery_by_kp(state.db, &req.kp_id)?;
+
+        // SM-2 advances at most once per day per KP. A quiz session answers
+        // several questions in a row and each answer calls update_mastery;
+        // without this guard a single session would count as several reviews
+        // and inflate the interval (0->1->6->16 days).
+        if let Some(rec) = &existing {
+            if !should_advance_sm2(rec.last_reviewed_at.as_deref(), chrono::Utc::now()) {
+                return Ok(rec.clone());
+            }
+        }
+
         let record_id = existing
             .as_ref()
             .map(|r| r.id.clone())
@@ -194,4 +205,42 @@ pub async fn update_mastery(
     .await?;
 
     Ok(Json(serde_json::to_value(&record).unwrap()))
+}
+
+/// SM-2 advances at most once per day per KP.
+fn should_advance_sm2(
+    last_reviewed_at: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    let Some(last) = last_reviewed_at
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+    else {
+        return true;
+    };
+    let last = last.with_timezone(&chrono::Utc);
+    last.date_naive() != now.date_naive()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sm2_advances_when_no_previous_review() {
+        assert!(should_advance_sm2(None, chrono::Utc::now()));
+    }
+
+    #[test]
+    fn sm2_does_not_advance_twice_same_day() {
+        let now = chrono::Utc::now();
+        let last = now.to_rfc3339();
+        assert!(!should_advance_sm2(Some(&last), now));
+    }
+
+    #[test]
+    fn sm2_advances_next_day() {
+        let now = chrono::Utc::now();
+        let yesterday = (now - chrono::Duration::days(1)).to_rfc3339();
+        assert!(should_advance_sm2(Some(&yesterday), now));
+    }
 }
