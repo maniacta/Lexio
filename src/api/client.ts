@@ -8,7 +8,7 @@ const API_BASE = "/api";
 let cachedToken: string | null = null;
 let tokenPromise: Promise<string> | null = null;
 
-async function resolveApiToken(): Promise<string> {
+export async function resolveApiToken(): Promise<string> {
   if (cachedToken) return cachedToken;
   if (!tokenPromise) {
     tokenPromise = (async () => {
