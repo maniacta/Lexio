@@ -10,6 +10,7 @@ import "./LearningView.css";
 
 interface Props {
   kpId: string | null;
+  autoStartQuiz?: string | null;
 }
 
 const RELATION_LABEL: Record<string, string> = {
@@ -18,7 +19,7 @@ const RELATION_LABEL: Record<string, string> = {
   extension: "延伸",
 };
 
-export default function LearningView({ kpId }: Props) {
+export default function LearningView({ kpId, autoStartQuiz }: Props) {
   const [kp, setKp] = useState<KnowledgePoint | null>(null);
   const [relations, setRelations] = useState<Relation[]>([]);
   const [relatedTitles, setRelatedTitles] = useState<Record<string, string>>({});
@@ -38,7 +39,13 @@ export default function LearningView({ kpId }: Props) {
     setRelations([]);
     setRelatedTitles({});
     setLoadError(null);
-    setShowQuiz(false);
+    if (autoStartQuiz === kpId) {
+      // Chat asked to start the quiz for this KP immediately.
+      setShowQuiz(true);
+      quiz.loadQuestions();
+    } else {
+      setShowQuiz(false);
+    }
 
     const ac = new AbortController();
     (async () => {
@@ -71,7 +78,7 @@ export default function LearningView({ kpId }: Props) {
     })();
 
     return () => ac.abort();
-  }, [kpId]);
+  }, [kpId, autoStartQuiz]);
 
   if (!kpId) {
     return (
