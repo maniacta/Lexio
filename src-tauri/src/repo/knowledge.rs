@@ -108,6 +108,34 @@ pub fn delete_kp(db: &Database, id: &str) -> Result<(), String> {
         [id],
     )
     .map_err(|e| e.to_string())?;
+
+    // Remove the deleted KP id from every plan's kp_ids JSON array.
+    {
+        let mut stmt = tx
+            .prepare("SELECT id, kp_ids FROM learning_plans")
+            .map_err(|e| e.to_string())?;
+        let plans: Vec<(String, String)> = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        for (plan_id, kp_ids_str) in plans {
+            let ids: Vec<String> = serde_json::from_str(&kp_ids_str).unwrap_or_default();
+            if ids.iter().any(|i| i == id) {
+                let filtered = ids.into_iter().filter(|i| i != id).collect::<Vec<_>>();
+                tx.execute(
+                    "UPDATE learning_plans SET kp_ids = ?1 WHERE id = ?2",
+                    rusqlite::params![
+                        serde_json::to_string(&filtered)
+                            .unwrap_or_else(|_| "[]".to_string()),
+                        plan_id
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
     tx.execute("DELETE FROM knowledge_points WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
@@ -165,5 +193,26 @@ mod tests {
         // 引号/操作符不应导致 FTS 语法错误
         let hits = search_kps(&db, "\"quote\"").unwrap();
         assert!(hits.len() <= 1);
+    }
+
+    #[test]
+    fn delete_kp_removes_id_from_plans() {
+        let db = test_db();
+        let kp = create_kp(&db, &kp_req("kp", "s", "c")).unwrap();
+        let plan = crate::repo::learning::create_plan(
+            &db,
+            &crate::models::CreateLearningPlanRequest {
+                title: "p".into(),
+                goal: "g".into(),
+                kp_ids: vec![kp.id.clone()],
+            },
+        )
+        .unwrap();
+        delete_kp(&db, &kp.id).unwrap();
+        let plan2 = crate::repo::learning::get_plan(&db, &plan.id)
+            .unwrap()
+            .unwrap();
+        assert!(!plan2.kp_ids.contains(&kp.id));
+        assert!(plan2.kp_ids.is_empty());
     }
 }
