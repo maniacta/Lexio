@@ -329,7 +329,7 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
                   <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
                     {saving ? "保存中…" : "保存密钥"}
                   </button>
-                  <button type="button" className="btn-secondary" onClick={cancelEdit}>
+                  <button type="button" className="btn-secondary" onClick={() => cancelEdit()}>
                     完成
                   </button>
                 </div>
@@ -383,7 +383,7 @@ export default function ProvidersTab({ settings, onSaved }: Props) {
             >
               {saving ? "保存中…" : "保存"}
             </button>
-            <button type="button" className="btn-secondary" onClick={cancelEdit}>
+            <button type="button" className="btn-secondary" onClick={() => cancelEdit()}>
               取消
             </button>
           </div>
