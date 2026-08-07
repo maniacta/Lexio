@@ -32,3 +32,5 @@ dist-ssr
 .omo/
 .worktrees/
 .pi-subagents/
+src-tauri/.lexio-master.key
+src-tauri/logs/
