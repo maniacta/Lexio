@@ -846,7 +846,15 @@ tracing_subscriber::registry()
     .init();
 ```
 
-**audit_middleware（server.rs）：** 参考备份 a2b78fd 完整实现；适配点——注册位置为**最外层**（先于 `require_token`）：`Router::new()... .layer(cors()).layer(middleware::from_fn(audit_middleware)).layer(middleware::from_fn_with_state(state, auth::require_token))`。注意 axum 的 layer 顺序：后注册的先执行，`audit_middleware` 需**最后** `.layer()` 调用（即最外层）。跳过路径：`/api/health`、`/api/auth/token`、`/api/logs/batch`。错误体收集 + `looks_like_internal_error` 清洗逻辑照抄备份。
+**audit_middleware（server.rs）：** 参考备份 a2b78fd 完整实现；适配点——注册位置为**最外层**（先于认证，记录 401）。axum 的 layer 顺序：**最后 `.layer()` 调用的是最外层**。远端现有顺序为 `... .layer(require_token).layer(cors())`（cors 最外层）；需改为：
+
+```rust
+.layer(cors())
+.layer(middleware::from_fn_with_state(state, auth::require_token))
+.layer(middleware::from_fn(audit_middleware)) // 最后注册 = 最外层 = 先于 auth 执行
+```
+
+请求顺序：audit → cors → require_token → handler。跳过路径：`/api/health`、`/api/auth/token`、`/api/logs/batch`。错误体收集 + `looks_like_internal_error` 清洗逻辑照抄备份。
 
 **handler 埋点：** 对远端现有 handler（sources/knowledge/quiz/learning/settings/relation/ai_routes）逐个加 `#[instrument(skip(state, ...), fields(path = "..."))]` + `tracing::info!(target: "audit", ...)`。**合并模式**（rebase 期间已验证）：保留远端 `blocking::run` 结构，`let start = std::time::Instant::now();` 放闭包前，闭包后 `duration_ms` + audit 事件；audit 需要的 req 字段在闭包前 clone。备份 8d01003 diff 是直接参考。
 
