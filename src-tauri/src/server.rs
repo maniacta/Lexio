@@ -1,12 +1,8 @@
-use axum::{
-    middleware,
-    routing::get,
-    Router,
-};
+use axum::{body::Body, middleware::{self, Next}, response::Response, routing::get, Router};
 use http::{header, Method};
 use tower_http::cors::CorsLayer;
 use crate::api::{
-    auth, chat_routes, sources, knowledge, quiz, learning, ai_routes, settings, relation,
+    auth, chat_routes, logs, sources, knowledge, quiz, learning, ai_routes, settings, relation,
 };
 
 /// Build the Axum application router.
@@ -61,8 +57,13 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
         .route("/api/settings/tasks/{task_name}", axum::routing::put(settings::set_task_model))
         .route("/api/settings/general", axum::routing::put(settings::update_general))
         .route("/api/settings/test-connection", axum::routing::post(settings::test_connection))
-        .layer(middleware::from_fn_with_state(state, auth::require_token))
+        // Logs
+        .route("/api/logs/batch", axum::routing::post(logs::ingest_logs))
         .layer(cors())
+        .layer(middleware::from_fn_with_state(state, auth::require_token))
+        // Audit middleware last → outermost: runs before auth so rejected
+        // requests (401) are also recorded.
+        .layer(middleware::from_fn(audit_middleware))
         .with_state(state)
 }
 
@@ -82,4 +83,89 @@ fn cors() -> CorsLayer {
 
 async fn health_check() -> &'static str {
     "OK"
+}
+
+async fn audit_middleware(
+    request: axum::http::Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let start = std::time::Instant::now();
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let path = uri.path().to_string();
+
+    let mut response = next.run(request).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let status_code = response.status().as_u16() as i32;
+
+    // Skip audit for the log ingestion endpoint itself (noise) and for
+    // health checks (otherwise every probe writes a row).
+    let skip_audit = path == "/api/logs/batch" || path == "/api/health";
+
+    // Collect error bodies so details reach the audit log, and sanitize
+    // internal SQL text (e.g. "no such column ... in SELECT") before it
+    // is returned to the client.
+    let mut error_message: Option<String> = None;
+    if status_code >= 400 && path != "/api/logs/batch" {
+        let (parts, body) = response.into_parts();
+        let bytes = axum::body::to_bytes(body, 8 * 1024).await.unwrap_or_default();
+        let text = String::from_utf8_lossy(&bytes).to_string();
+        if status_code >= 500 && looks_like_internal_error(&text) {
+            response = Response::from_parts(parts, Body::from("服务器内部错误，详情已记录到日志"));
+        } else {
+            response = Response::from_parts(parts, Body::from(bytes));
+        }
+        if !text.trim().is_empty() {
+            error_message = Some(truncate(&text, 500));
+        }
+    }
+
+    if !skip_audit {
+        if let Some(msg) = &error_message {
+            tracing::info!(
+                target: "audit",
+                source = "backend",
+                category = "system",
+                action = "http_request",
+                method = %method.as_str(),
+                path = %path,
+                status_code = status_code,
+                duration_ms = duration_ms,
+                error_message = %msg,
+            );
+        } else {
+            tracing::info!(
+                target: "audit",
+                source = "backend",
+                category = "system",
+                action = "http_request",
+                method = %method.as_str(),
+                path = %path,
+                status_code = status_code,
+                duration_ms = duration_ms,
+            );
+        }
+    }
+
+    response
+}
+
+fn looks_like_internal_error(text: &str) -> bool {
+    let t = text.to_lowercase();
+    t.contains("sqlite")
+        || t.contains("no such column")
+        || t.contains("constraint failed")
+        || t.contains("foreign key")
+        || t.contains("database disk image")
+}
+
+fn truncate(text: &str, max_chars: usize) -> String {
+    if text.chars().count() > max_chars {
+        let mut t: String = text.chars().take(max_chars).collect();
+        t.push('…');
+        t
+    } else {
+        text.to_string()
+    }
 }

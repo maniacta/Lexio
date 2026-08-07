@@ -154,7 +154,10 @@ pub async fn update_mastery(
     State(state): State<&'static AppState>,
     Json(req): Json<UpdateMasteryRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let record = blocking::run(move || {
+    let start = std::time::Instant::now();
+    let audit_kp_id = req.kp_id.clone();
+    let audit_is_correct = req.is_correct;
+    let (record, advanced) = blocking::run(move || {
         let existing = repo::learning::get_mastery_by_kp(state.db, &req.kp_id)?;
 
         // SM-2 advances at most once per day per KP. A quiz session answers
@@ -163,7 +166,7 @@ pub async fn update_mastery(
         // and inflate the interval (0->1->6->16 days).
         if let Some(rec) = &existing {
             if !should_advance_sm2(rec.last_reviewed_at.as_deref(), chrono::Utc::now()) {
-                return Ok(rec.clone());
+                return Ok((rec.clone(), false));
             }
         }
 
@@ -200,9 +203,20 @@ pub async fn update_mastery(
             last_reviewed_at: Some(chrono::Utc::now().to_rfc3339()),
         };
         repo::learning::upsert_mastery(state.db, &record)?;
-        Ok(record)
+        Ok((record, true))
     })
     .await?;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "ai",
+        action = "update_mastery",
+        status_code = 200,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"kp_id": audit_kp_id, "is_correct": audit_is_correct, "advanced": advanced}),
+    );
 
     Ok(Json(serde_json::to_value(&record).unwrap()))
 }
@@ -246,6 +260,8 @@ pub async fn chat(
     Json(req): Json<ChatRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
     use crate::repo::{knowledge, learning};
+    let start = std::time::Instant::now();
+    let audit_msg_count = req.messages.len();
 
     let llm_config = match blocking::run(move || repo::settings::resolve_llm_config(state.db, "chat")).await
     {
@@ -313,6 +329,18 @@ pub async fn chat(
             content: response,
             actions: vec![],
         });
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "ai",
+        action = "chat",
+        status_code = 200,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"messages": audit_msg_count}),
+        result_summary = %serde_json::json!({"actions": chat_resp.actions.len()}),
+    );
 
     Ok((StatusCode::OK, Json(serde_json::to_value(&chat_resp).unwrap())))
 }

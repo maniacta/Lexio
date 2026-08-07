@@ -38,5 +38,8 @@ async-trait = "0.1"
 aes-gcm = "0.10"
 base64 = "0.22"
 getrandom = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
 
 

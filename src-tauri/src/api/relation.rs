@@ -53,6 +53,18 @@ pub async fn delete_relation(
     State(state): State<&'static AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let audit_id = id.clone();
+    let start = std::time::Instant::now();
     blocking::run_user(move || repo::relation::delete_relation(state.db, &id)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "relation",
+        action = "delete_relation",
+        status_code = 204,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"relation_id": audit_id}),
+    );
     Ok(StatusCode::NO_CONTENT)
 }
