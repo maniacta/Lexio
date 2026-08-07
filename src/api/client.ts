@@ -1,4 +1,4 @@
-import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem, ProviderKindInfo, Relation, CreateRelationRequest } from "../types";
+import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem, ProviderKindInfo, Relation, CreateRelationRequest, ChatRequest, ChatResponse, ChatSession, ChatMessage, ChatAction } from "../types";
 import { isTauri } from "../utils/tauri";
 import { isAbortError } from "../utils/errors";
 
@@ -167,6 +167,53 @@ export const api = {
       request<MasteryRecord>("/ai/update-mastery", {
         method: "POST",
         body: JSON.stringify({ kp_id: kpId, is_correct: isCorrect }),
+        signal,
+      }),
+    chat: (data: ChatRequest, signal?: AbortSignal) =>
+      request<ChatResponse>("/ai/chat", {
+        method: "POST",
+        body: JSON.stringify(data),
+        signal,
+      }),
+  },
+
+  // Chat sessions
+  chatApi: {
+    listSessions: (signal?: AbortSignal) =>
+      request<ChatSession[]>("/chat/sessions", { signal }),
+    createSession: (title: string, signal?: AbortSignal) =>
+      request<ChatSession>("/chat/sessions", {
+        method: "POST",
+        body: JSON.stringify({ title }),
+        signal,
+      }),
+    getMessages: (sessionId: string, signal?: AbortSignal) =>
+      request<ChatMessage[]>(`/chat/sessions/${sessionId}/messages`, { signal }),
+    appendMessage: (
+      data: {
+        session_id: string;
+        role: string;
+        content: string;
+        actions?: ChatAction[];
+        context?: unknown;
+      },
+      signal?: AbortSignal
+    ) =>
+      request<ChatMessage>("/chat/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          ...data,
+          actions: data.actions ? JSON.stringify(data.actions) : undefined,
+          context: data.context ? JSON.stringify(data.context) : undefined,
+        }),
+        signal,
+      }),
+    deleteSession: (sessionId: string, signal?: AbortSignal) =>
+      request<void>(`/chat/sessions/${sessionId}`, { method: "DELETE", signal }),
+    setSessionPlan: (sessionId: string, planId: string, signal?: AbortSignal) =>
+      request<void>(`/chat/sessions/${sessionId}/plan`, {
+        method: "POST",
+        body: JSON.stringify({ plan_id: planId }),
         signal,
       }),
   },
