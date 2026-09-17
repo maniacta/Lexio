@@ -5,16 +5,18 @@ import { usePlatform, getRunMode } from "../utils/tauri";
 import { api } from "../api/client";
 import { DATA_CHANGED } from "../utils/events";
 import type { View } from "./Layout";
+import type { Source } from "../types";
 import "./Sidebar.css";
 
 interface Props {
   onSelectKp: (id: string) => void;
+  onOpenSource: (source: Source) => void;
   selectedKpId?: string;
   currentView: View;
   onNavigate: (view: View) => void;
 }
 
-export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavigate }: Props) {
+export default function Sidebar({ onSelectKp, onOpenSource, selectedKpId, currentView, onNavigate }: Props) {
   const platform = usePlatform();
   const runMode = getRunMode();
   const [tab, setTab] = useState<"sources" | "knowledge">("knowledge");
@@ -69,7 +71,7 @@ export default function Sidebar({ onSelectKp, selectedKpId, currentView, onNavig
 
       <div className="sidebar-scroll">
         {tab === "knowledge" && <KpList onSelect={onSelectKp} selectedId={selectedKpId} />}
-        {tab === "sources" && <SourceList />}
+        {tab === "sources" && <SourceList onOpen={onOpenSource} />}
       </div>
 
       <button

@@ -46,6 +46,7 @@ export default function Layout() {
     <div className="layout">
       <Sidebar
         onSelectKp={handleSelectKp}
+        onOpenSource={setViewSource}
         selectedKpId={selectedKpId ?? undefined}
         currentView={view}
         onNavigate={setView}
