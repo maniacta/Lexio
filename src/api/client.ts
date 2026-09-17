@@ -243,6 +243,12 @@ export const api = {
         body: JSON.stringify({ plan_id: planId }),
         signal,
       }),
+    setSessionTitle: (sessionId: string, title: string, signal?: AbortSignal) =>
+      request<void>(`/chat/sessions/${sessionId}/title`, {
+        method: "POST",
+        body: JSON.stringify({ title }),
+        signal,
+      }),
   },
 
   // Settings

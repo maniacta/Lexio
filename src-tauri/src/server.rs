@@ -85,6 +85,10 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
             axum::routing::post(chat_routes::set_session_plan),
         )
         .route(
+            "/api/chat/sessions/{id}/title",
+            axum::routing::post(chat_routes::set_session_title),
+        )
+        .route(
             "/api/chat/messages",
             axum::routing::post(chat_routes::append_message),
         )

@@ -150,3 +150,30 @@ pub async fn set_session_plan(
     );
     Ok(StatusCode::OK)
 }
+
+#[derive(Deserialize)]
+pub struct SetTitleRequest {
+    pub title: String,
+}
+
+pub async fn set_session_title(
+    State(state): State<&'static AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<SetTitleRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    crate::limits::validate_session_title(&req.title).map_err(crate::api::bad_request)?;
+    let audit_id = id.clone();
+    let start = std::time::Instant::now();
+    blocking::run(move || repo::chat::set_session_title(state.db, &id, &req.title)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "chat",
+        action = "set_session_title",
+        status_code = 200,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"session_id": audit_id}),
+    );
+    Ok(StatusCode::OK)
+}

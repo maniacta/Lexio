@@ -255,12 +255,24 @@ export function useChat() {
           error_message: err instanceof Error ? err.message : String(err),
         });
       }
-      // Auto-title from the first user message.
+      // Auto-title from the first user message, and persist it. Previously
+      // only the in-memory list changed, so a reload showed every session as
+      // "新对话".
       if (sessions.length === 0 || (activeSessionId && messages.length === 0)) {
         const t = content.slice(0, 20);
         setSessions((prev) =>
           prev.map((s) => (s.id === sessionId ? { ...s, title: t } : s))
         );
+        try {
+          await api.chatApi.setSessionTitle(sessionId, t);
+        } catch (err) {
+          logger.log({
+            level: "error",
+            category: "chat",
+            action: "persist_title_error",
+            error_message: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
 
       researchAbort.current?.abort();
