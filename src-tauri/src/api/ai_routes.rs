@@ -160,10 +160,10 @@ pub async fn update_mastery(
     let (record, advanced) = blocking::run(move || {
         let existing = repo::learning::get_mastery_by_kp(state.db, &req.kp_id)?;
 
-        // SM-2 advances at most once per day per KP. A quiz session answers
-        // several questions in a row and each answer calls update_mastery;
-        // without this guard a single session would count as several reviews
-        // and inflate the interval (0->1->6->16 days).
+        // SM-2 advances at most once per local calendar day per KP. A quiz
+        // session answers several questions in a row and each answer calls
+        // update_mastery; without this guard a single session would count as
+        // several reviews and inflate the interval (0->1->6->16 days).
         if let Some(rec) = &existing {
             if !should_advance_sm2(rec.last_reviewed_at.as_deref(), chrono::Utc::now()) {
                 return Ok((rec.clone(), false));
@@ -355,23 +355,44 @@ pub async fn chat(
     Ok((StatusCode::OK, Json(serde_json::to_value(&chat_resp).unwrap())))
 }
 
-/// SM-2 advances at most once per day per KP.
+/// SM-2 advances at most once per local calendar day per KP.
+///
+/// The day is the machine's local calendar, not UTC. A UTC+8 user reviewing at
+/// 07:00 and 09:00 local would otherwise land on two UTC dates (23:00Z / 01:00Z)
+/// and get two SM-2 steps in one morning; the reverse, two reviews that straddle
+/// local midnight but stay on the same UTC date, would fail to advance at all.
 fn should_advance_sm2(
     last_reviewed_at: Option<&str>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> bool {
-    let Some(last) = last_reviewed_at
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+    should_advance_sm2_on(last_reviewed_at, now, &chrono::Local)
+}
+
+fn should_advance_sm2_on<Tz: chrono::TimeZone>(
+    last_reviewed_at: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+    tz: &Tz,
+) -> bool {
+    let Some(last) = last_reviewed_at.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
     else {
         return true;
     };
-    let last = last.with_timezone(&chrono::Utc);
-    last.date_naive() != now.date_naive()
+    last.with_timezone(tz).date_naive() != now.with_timezone(tz).date_naive()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn utc8() -> chrono::FixedOffset {
+        chrono::FixedOffset::east_opt(8 * 3600).expect("UTC+8")
+    }
+
+    fn utc_at(rfc3339: &str) -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339(rfc3339)
+            .unwrap()
+            .with_timezone(&chrono::Utc)
+    }
 
     #[test]
     fn sm2_advances_when_no_previous_review() {
@@ -390,5 +411,38 @@ mod tests {
         let now = chrono::Utc::now();
         let yesterday = (now - chrono::Duration::days(1)).to_rfc3339();
         assert!(should_advance_sm2(Some(&yesterday), now));
+    }
+
+    #[test]
+    fn sm2_does_not_advance_twice_on_the_same_local_day() {
+        // UTC+8: local 07:00 and 09:00 on 2026-09-18 are 23:00Z / 01:00Z.
+        let last = "2026-09-17T23:00:00Z";
+        let now = utc_at("2026-09-18T01:00:00Z");
+        assert!(
+            !should_advance_sm2_on(Some(last), now, &utc8()),
+            "two morning reviews on the same local date must share one SM-2 step"
+        );
+        // The UTC-day comparison is what used to fire here.
+        assert_ne!(
+            utc_at(last).date_naive(),
+            now.date_naive(),
+            "the fixture really does straddle a UTC date"
+        );
+    }
+
+    #[test]
+    fn sm2_advances_when_the_local_date_changes_inside_one_utc_day() {
+        // UTC+8: local 23:00 on Sep 17 and 01:00 on Sep 18 are 15:00Z / 17:00Z.
+        let last = "2026-09-17T15:00:00Z";
+        let now = utc_at("2026-09-17T17:00:00Z");
+        assert!(
+            should_advance_sm2_on(Some(last), now, &utc8()),
+            "crossing local midnight must still advance, even on the same UTC date"
+        );
+        assert_eq!(
+            utc_at(last).date_naive(),
+            now.date_naive(),
+            "the fixture really does stay on one UTC date"
+        );
     }
 }
