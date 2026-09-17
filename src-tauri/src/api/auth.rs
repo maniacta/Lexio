@@ -50,7 +50,7 @@ pub async fn require_token(
         .get("x-lexio-token")
         .and_then(|v| v.to_str().ok());
 
-    if provided == Some(state.api_token.as_str()) {
+    if token_matches(provided, &state.api_token) {
         next.run(req).await
     } else {
         (
@@ -149,6 +149,26 @@ pub async fn bootstrap_token(
     Ok(Json(json!({ "token": state.api_token })))
 }
 
+/// Compare two byte slices without returning on the first mismatch, so the
+/// time spent depends on the longer length rather than on where they differ.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    let len = a.len().max(b.len());
+    let mut diff = u8::from(a.len() != b.len());
+    for i in 0..len {
+        let x = a.get(i).copied().unwrap_or(0);
+        let y = b.get(i).copied().unwrap_or(0);
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+fn token_matches(provided: Option<&str>, expected: &str) -> bool {
+    match provided {
+        Some(provided) => constant_time_eq(provided.as_bytes(), expected.as_bytes()),
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +240,16 @@ mod tests {
         ] {
             assert!(!is_preflight(&m), "{m} must still require a token");
         }
+    }
+
+    #[test]
+    fn token_compare_is_equality_not_prefix() {
+        assert!(token_matches(Some("lexio-token"), "lexio-token"));
+        assert!(!token_matches(Some("lexio-token"), "lexio-token!"));
+        assert!(!token_matches(Some("lexio-toke"), "lexio-token"));
+        assert!(!token_matches(None, "lexio-token"));
+        assert!(constant_time_eq(b"aaa", b"aaa"));
+        assert!(!constant_time_eq(b"aaa", b"aab"));
+        assert!(!constant_time_eq(b"aaa", b"aa"));
     }
 }
