@@ -10,6 +10,7 @@ pub mod error;
 pub mod key_store;
 pub mod limits;
 pub mod listen;
+pub mod startup;
 pub mod tracing_layer;
 
 use std::net::SocketAddr;
@@ -47,8 +48,9 @@ pub fn cleanup_old_log_files(logs_dir: &std::path::Path, retention_days: i64) {
 
 /// Initialize the tracing subscriber (file logs + audit DB layer) and apply
 /// retention cleanup. Idempotent for process lifetime; call once at startup.
-pub fn init_logging(db: &'static Database, logs_dir: &std::path::Path) {
-    std::fs::create_dir_all(logs_dir).unwrap();
+pub fn init_logging(db: &'static Database, logs_dir: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(logs_dir)
+        .map_err(|e| format!("无法创建日志目录 {}：{e}", logs_dir.display()))?;
     cleanup_old_log_files(logs_dir, FILE_LOG_RETENTION_DAYS);
 
     let file_appender =
@@ -72,6 +74,7 @@ pub fn init_logging(db: &'static Database, logs_dir: &std::path::Path) {
         .with(audit_layer)
         .with(file_layer)
         .init();
+    Ok(())
 }
 
 #[tauri::command]
@@ -100,15 +103,27 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
-            let app_dir: PathBuf = app_handle.path().app_data_dir().unwrap();
-            std::fs::create_dir_all(&app_dir).unwrap();
+            let app_dir: PathBuf = app_handle
+                .path()
+                .app_data_dir()
+                .map_err(|e| crate::startup::fail(format!("无法确定应用数据目录：{e}")))?;
+            std::fs::create_dir_all(&app_dir).map_err(|e| {
+                crate::startup::fail(format!(
+                    "无法创建应用数据目录 {}：{e}",
+                    app_dir.display()
+                ))
+            })?;
             let db_path = app_dir.join("lexio.db");
-            let db_path_str = db_path.to_str().unwrap().to_string();
+            let db_path_str = crate::startup::utf8_path(&db_path, "数据库路径")
+                .map_err(crate::startup::fail)?;
 
-            crypto::init_master_key(&db_path_str).expect("Failed to init master key");
+            crypto::init_master_key(&db_path_str)
+                .map_err(|e| crate::startup::fail(format!("无法初始化主密钥：{e}")))?;
 
-            let db = Database::new(&db_path_str).expect("Failed to open database");
-            db.migrate().expect("Failed to run migrations");
+            let db = Database::new(&db_path_str)
+                .map_err(|e| crate::startup::fail(format!("无法打开数据库：{e}")))?;
+            db.migrate()
+                .map_err(|e| crate::startup::fail(format!("无法运行数据库迁移：{e}")))?;
             let db: &'static db::Database = Box::leak(Box::new(db));
             app_handle.manage(db);
 
@@ -117,25 +132,22 @@ pub fn run() {
 
             // Initialize settings presets (idempotent)
             repo::settings::init_presets(db)
-                .expect("Failed to initialize settings presets");
+                .map_err(|e| crate::startup::fail(format!("无法初始化设置：{e}")))?;
             repo::settings::migrate_deepseek_models(db)
-                .expect("Failed to migrate DeepSeek models");
+                .map_err(|e| crate::startup::fail(format!("无法迁移模型设置：{e}")))?;
             repo::settings::migrate_encrypt_api_keys(db)
-                .expect("Failed to encrypt API keys");
+                .map_err(|e| crate::startup::fail(format!("无法加密已保存的 API Key：{e}")))?;
 
             // ── Initialize tracing subscriber ──
             let logs_dir = app_dir.join("logs");
-            crate::init_logging(db, &logs_dir);
+            crate::init_logging(db, &logs_dir).map_err(crate::startup::fail)?;
             // The key was loaded before logging existed; report its provenance now.
             crypto::log_master_key_provenance();
             tracing::info!(target: "audit", source = "backend", category = "system", action = "startup", user_action = "应用启动");
 
             let api_token = crypto::generate_api_token();
             let (std_listener, port) = crate::listen::bind_loopback_std(crate::listen::API_PORT)
-                .map_err(|msg| {
-                    eprintln!("{msg}");
-                    msg
-                })?;
+                .map_err(crate::startup::fail)?;
             app_handle.manage(ApiState {
                 port,
                 token: api_token.clone(),
@@ -171,5 +183,5 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![greet, get_api_port, get_api_token])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| crate::startup::exit(format!("无法启动 Lexio：{e}")));
 }
