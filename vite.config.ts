@@ -16,7 +16,11 @@ export default defineConfig(async () => ({
   server: {
     port: 14200,
     strictPort: true,
-    host: host || "0.0.0.0",
+    // Bind to loopback by default. The dev server proxies /api to the backend,
+    // and the backend trusts any loopback peer as the local user, so listening
+    // on 0.0.0.0 would let any LAN host fetch /api/auth/token and fully drive
+    // the app. LAN/mobile debugging stays available via TAURI_DEV_HOST=0.0.0.0.
+    host: host || "127.0.0.1",
     proxy: {
       "/api": "http://127.0.0.1:3001",
     },
