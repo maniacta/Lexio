@@ -9,6 +9,7 @@ pub mod crypto;
 pub mod error;
 pub mod key_store;
 pub mod limits;
+pub mod listen;
 pub mod tracing_layer;
 
 use std::net::SocketAddr;
@@ -130,8 +131,13 @@ pub fn run() {
             tracing::info!(target: "audit", source = "backend", category = "system", action = "startup", user_action = "应用启动");
 
             let api_token = crypto::generate_api_token();
+            let (std_listener, port) = crate::listen::bind_loopback_std(crate::listen::API_PORT)
+                .map_err(|msg| {
+                    eprintln!("{msg}");
+                    msg
+                })?;
             app_handle.manage(ApiState {
-                port: 3001,
+                port,
                 token: api_token.clone(),
             });
 
@@ -142,17 +148,23 @@ pub fn run() {
                 }));
 
             tauri::async_runtime::spawn(async move {
-                let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
-                let listener = TcpListener::bind(addr).await.unwrap();
-                let actual_port = listener.local_addr().unwrap().port();
-                eprintln!("Lexio backend running on http://127.0.0.1:{actual_port}");
+                let listener = match TcpListener::from_std(std_listener) {
+                    Ok(listener) => listener,
+                    Err(e) => {
+                        eprintln!("无法启动本地 API：{e}");
+                        return;
+                    }
+                };
+                eprintln!("Lexio backend running on http://127.0.0.1:{port}");
 
-                axum::serve(
+                if let Err(e) = axum::serve(
                     listener,
                     server::app(app_state).into_make_service_with_connect_info::<SocketAddr>(),
                 )
                 .await
-                .unwrap();
+                {
+                    eprintln!("Lexio 本地 API 服务异常退出：{e}");
+                }
             });
 
             Ok(())

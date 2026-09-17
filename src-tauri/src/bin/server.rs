@@ -1,7 +1,6 @@
 // Standalone Axum server for web-only mode (no Tauri/GTK required)
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use tokio::net::TcpListener;
 
 fn main() {
     // Use current directory for DB in web mode
@@ -37,15 +36,25 @@ fn main() {
         lexio_lib::crypto::log_master_key_provenance();
         lexio_lib::repo::audit::prune(db, lexio_lib::AUDIT_LOG_RETENTION_DAYS);
 
-        let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
-        let listener = TcpListener::bind(addr).await.unwrap();
-        println!("Lexio backend running on http://127.0.0.1:3001");
+        let (listener, port) = match lexio_lib::listen::bind_loopback(lexio_lib::listen::API_PORT)
+            .await
+        {
+            Ok(bound) => bound,
+            Err(msg) => {
+                eprintln!("{msg}");
+                std::process::exit(1);
+            }
+        };
+        println!("Lexio backend running on http://127.0.0.1:{port}");
         println!("Local API token ready (fetch /api/auth/token from loopback)");
-        axum::serve(
+        if let Err(e) = axum::serve(
             listener,
             lexio_lib::server::app(app_state).into_make_service_with_connect_info::<SocketAddr>(),
         )
         .await
-        .unwrap();
+        {
+            eprintln!("Lexio 本地 API 服务异常退出：{e}");
+            std::process::exit(1);
+        }
     });
 }
