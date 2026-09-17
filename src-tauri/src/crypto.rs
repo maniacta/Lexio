@@ -87,7 +87,13 @@ pub fn encrypt_secret(plain: &str) -> Result<String, String> {
         return Ok(String::new());
     }
     if plain.starts_with(PREFIX) {
-        return Ok(plain.to_string());
+        // Re-saving an already-valid ciphertext is a no-op. A string that only
+        // *looks* like our envelope would otherwise be stored forever and then
+        // fail to decrypt on every read.
+        return match decrypt_secret(plain) {
+            Ok(_) => Ok(plain.to_string()),
+            Err(_) => Err("请粘贴明文 API Key，不要粘贴无法解密的 enc:v1: 密文".into()),
+        };
     }
     let cipher = cipher()?;
     let mut nonce_bytes = [0u8; NONCE_LEN];
@@ -150,5 +156,36 @@ mod tests {
         );
         let other = generate_api_token().expect("rng");
         assert_ne!(token, other);
+    }
+
+    fn ensure_test_master_key() {
+        let mut key = [0u8; 32];
+        key[0] = 0x5a;
+        let _ = MASTER_KEY.set(key);
+    }
+
+    #[test]
+    fn encrypt_secret_round_trips() {
+        ensure_test_master_key();
+        let stored = encrypt_secret("sk-test-key").unwrap();
+        assert!(stored.starts_with(PREFIX));
+        assert_eq!(decrypt_secret(&stored).unwrap(), "sk-test-key");
+    }
+
+    #[test]
+    fn encrypt_secret_keeps_valid_ciphertext() {
+        ensure_test_master_key();
+        let stored = encrypt_secret("sk-test-key").unwrap();
+        assert_eq!(encrypt_secret(&stored).unwrap(), stored);
+    }
+
+    #[test]
+    fn encrypt_secret_rejects_forged_ciphertext() {
+        ensure_test_master_key();
+        let err = encrypt_secret("enc:v1:not-a-real-blob").unwrap_err();
+        assert!(
+            err.contains("enc:v1:"),
+            "forged envelope must be rejected, got: {err}"
+        );
     }
 }
