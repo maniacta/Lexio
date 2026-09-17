@@ -23,6 +23,48 @@ pub struct ChatMessage {
     pub created_at: String,
 }
 
+/// Client-facing chat message. `actions` / `context` are emitted as parsed
+/// JSON instead of the raw DB strings, so the frontend contract really is
+/// `ChatAction[]` / object (previously the API returned strings while the UI
+/// called `.map()` on them, crashing the render tree on session reload).
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatMessagePublic {
+    pub id: String,
+    pub session_id: String,
+    pub role: String,
+    pub content: String,
+    pub actions: Option<serde_json::Value>,
+    pub context: Option<serde_json::Value>,
+    pub created_at: String,
+}
+
+/// Parse a JSON column, keeping the value only when it has the expected shape.
+/// Returns `None` for NULL/empty/malformed values so a corrupt row degrades to
+/// "no actions" instead of breaking the client.
+fn parse_json_shaped(raw: Option<&str>, want_array: bool) -> Option<serde_json::Value> {
+    let value: serde_json::Value = serde_json::from_str(raw?.trim()).ok()?;
+    let matches_shape = if want_array {
+        value.is_array()
+    } else {
+        value.is_object()
+    };
+    matches_shape.then_some(value)
+}
+
+impl ChatMessage {
+    pub fn to_public(&self) -> ChatMessagePublic {
+        ChatMessagePublic {
+            id: self.id.clone(),
+            session_id: self.session_id.clone(),
+            role: self.role.clone(),
+            content: self.content.clone(),
+            actions: parse_json_shaped(self.actions.as_deref(), true),
+            context: parse_json_shaped(self.context.as_deref(), false),
+            created_at: self.created_at.clone(),
+        }
+    }
+}
+
 pub fn list_sessions(db: &Database) -> Result<Vec<ChatSession>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
@@ -234,5 +276,58 @@ mod tests {
         assert_eq!(msgs[0].actions.as_deref(), Some(r#"[{"type":"navigate_learning","label":"进入"}]"#));
         assert_eq!(msgs[0].context.as_deref(), Some(r#"{"plan":{"id":"p1"}}"#));
         assert_eq!(m.role, "assistant");
+    }
+
+    /// C1 regression: the API must hand the client real JSON, not DB strings,
+    /// otherwise the UI calls `.map()` on a string and unmounts the whole tree.
+    #[test]
+    fn to_public_parses_actions_into_json_array() {
+        let db = test_db();
+        let s = create_session(&db, "c1").unwrap();
+        append_message(
+            &db,
+            &s.id,
+            "assistant",
+            "回复",
+            Some(r#"[{"type":"start_quiz","label":"测验","payload":{"kpId":"k1"}}]"#),
+            Some(r#"{"plan":{"id":"p1"}}"#),
+        )
+        .unwrap();
+
+        let public = get_messages(&db, &s.id).unwrap()[0].to_public();
+        let actions = public.actions.expect("actions should be parsed");
+        assert!(actions.is_array(), "actions must serialize as an array");
+        assert_eq!(actions[0]["type"], "start_quiz");
+        assert_eq!(actions[0]["payload"]["kpId"], "k1");
+        assert!(public.context.expect("context parsed").is_object());
+    }
+
+    #[test]
+    fn to_public_keeps_null_for_missing_columns() {
+        let db = test_db();
+        let s = create_session(&db, "c1-null").unwrap();
+        append_message(&db, &s.id, "user", "你好", None, None).unwrap();
+
+        let public = get_messages(&db, &s.id).unwrap()[0].to_public();
+        assert!(public.actions.is_none());
+        assert!(public.context.is_none());
+    }
+
+    /// A corrupt row must degrade to "no actions" instead of failing the request.
+    #[test]
+    fn to_public_degrades_on_malformed_or_misshapen_json() {
+        let db = test_db();
+        let s = create_session(&db, "c1-bad").unwrap();
+        // Malformed JSON, and valid JSON of the wrong shape.
+        append_message(&db, &s.id, "assistant", "a", Some("{not json"), None).unwrap();
+        append_message(&db, &s.id, "assistant", "b", Some(r#"{"type":"x"}"#), None).unwrap();
+        append_message(&db, &s.id, "assistant", "c", Some("[]"), Some("[1,2]")).unwrap();
+
+        let msgs = get_messages(&db, &s.id).unwrap();
+        assert!(msgs[0].to_public().actions.is_none(), "malformed → None");
+        assert!(msgs[1].to_public().actions.is_none(), "object where array expected → None");
+        assert!(msgs[2].to_public().context.is_none(), "array where object expected → None");
+        // ...but valid arrays still survive.
+        assert!(msgs[2].to_public().actions.is_some());
     }
 }

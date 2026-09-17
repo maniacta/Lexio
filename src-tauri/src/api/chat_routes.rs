@@ -58,7 +58,8 @@ pub async fn get_messages(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let messages = blocking::run(move || repo::chat::get_messages(state.db, &id)).await?;
-    Ok(Json(serde_json::to_value(&messages).unwrap()))
+    let public = messages.iter().map(|m| m.to_public()).collect::<Vec<_>>();
+    Ok(Json(serde_json::to_value(&public).unwrap()))
 }
 
 pub async fn append_message(
@@ -78,6 +79,7 @@ pub async fn append_message(
         )
     })
     .await?;
+    let public = message.to_public();
     let duration_ms = start.elapsed().as_millis() as i64;
     tracing::info!(
         target: "audit",
@@ -86,9 +88,9 @@ pub async fn append_message(
         action = "append_message",
         status_code = 201,
         duration_ms = duration_ms,
-        params_summary = %serde_json::json!({"role": audit_role, "session_id": message.session_id}),
+        params_summary = %serde_json::json!({"role": audit_role, "session_id": public.session_id}),
     );
-    Ok((StatusCode::CREATED, Json(serde_json::to_value(&message).unwrap())))
+    Ok((StatusCode::CREATED, Json(serde_json::to_value(&public).unwrap())))
 }
 
 pub async fn delete_session(

@@ -10,6 +10,9 @@ interface Props {
 
 export default function MessageBubble({ message, onAction }: Props) {
   const isUser = message.role === "user";
+  // Defensive: the API layer normalizes this, but never call `.map()` on a
+  // non-array — a single bad payload must not unmount the render tree.
+  const actions = Array.isArray(message.actions) ? message.actions : [];
 
   return (
     <div className={`message-bubble ${isUser ? "user" : "assistant"}`}>
@@ -20,9 +23,9 @@ export default function MessageBubble({ message, onAction }: Props) {
         ) : (
           <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{message.content}</ReactMarkdown>
         )}
-        {message.actions && message.actions.length > 0 && (
+        {actions.length > 0 && (
           <div className="message-actions">
-            {message.actions.map((a, i) => (
+            {actions.map((a, i) => (
               <button key={i} className="btn-action" onClick={() => onAction?.(a)}>
                 {a.label}
               </button>

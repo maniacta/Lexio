@@ -329,3 +329,38 @@ select:disabled {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ── Error boundary (replaces the app shell when a render error is caught) ── */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  height: 100%;
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--color-text-primary);
+  background: var(--color-bg);
+}
+
+.error-boundary h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.error-boundary-detail {
+  max-width: 560px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  color: var(--color-danger);
+  font-size: 13px;
+  word-break: break-word;
+  box-shadow: var(--nm-i1);
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+}

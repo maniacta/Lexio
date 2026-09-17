@@ -35,6 +35,28 @@ export async function resolveApiToken(): Promise<string> {
 
 export type RequestOptions = RequestInit & { signal?: AbortSignal };
 
+/**
+ * Normalize a chat message coming off the wire. `actions` must always be an
+ * array before it reaches the renderer: rows written by older builds (or a
+ * malformed payload) could arrive as a JSON string or an unexpected shape, and
+ * `actions.map()` on a non-array used to take down the whole React tree.
+ */
+function normalizeChatMessage(raw: ChatMessage): ChatMessage {
+  let actions: ChatAction[] | undefined;
+  const rawActions = (raw as { actions?: unknown }).actions;
+  if (Array.isArray(rawActions)) {
+    actions = rawActions as ChatAction[];
+  } else if (typeof rawActions === "string") {
+    try {
+      const parsed: unknown = JSON.parse(rawActions);
+      actions = Array.isArray(parsed) ? (parsed as ChatAction[]) : undefined;
+    } catch {
+      actions = undefined;
+    }
+  }
+  return { ...raw, actions };
+}
+
 async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   const token = await resolveApiToken();
   let res: Response;
@@ -187,9 +209,14 @@ export const api = {
         body: JSON.stringify({ title }),
         signal,
       }),
-    getMessages: (sessionId: string, signal?: AbortSignal) =>
-      request<ChatMessage[]>(`/chat/sessions/${sessionId}/messages`, { signal }),
-    appendMessage: (
+    getMessages: async (sessionId: string, signal?: AbortSignal) => {
+      const messages = await request<ChatMessage[]>(
+        `/chat/sessions/${sessionId}/messages`,
+        { signal },
+      );
+      return messages.map(normalizeChatMessage);
+    },
+    appendMessage: async (
       data: {
         session_id: string;
         role: string;
@@ -198,8 +225,8 @@ export const api = {
         context?: unknown;
       },
       signal?: AbortSignal
-    ) =>
-      request<ChatMessage>("/chat/messages", {
+    ) => {
+      const message = await request<ChatMessage>("/chat/messages", {
         method: "POST",
         body: JSON.stringify({
           ...data,
@@ -207,7 +234,9 @@ export const api = {
           context: data.context ? JSON.stringify(data.context) : undefined,
         }),
         signal,
-      }),
+      });
+      return normalizeChatMessage(message);
+    },
     deleteSession: (sessionId: string, signal?: AbortSignal) =>
       request<void>(`/chat/sessions/${sessionId}`, { method: "DELETE", signal }),
     setSessionPlan: (sessionId: string, planId: string, signal?: AbortSignal) =>
