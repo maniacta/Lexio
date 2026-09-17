@@ -268,6 +268,58 @@ textarea::placeholder {
   opacity: 1;
 }
 
+/* ── Selects: one shared look in both themes ──
+   The chevron is drawn with a mask so it inherits the current text color
+   instead of a hard-coded fill that would break in dark mode. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  padding-right: 38px;
+  background-image: none;
+}
+
+select::-ms-expand {
+  display: none;
+}
+
+.select-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.select-wrap::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 3.5px);
+  right: 15px;
+  width: 10px;
+  height: 7px;
+  background-color: var(--color-text-secondary);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+  pointer-events: none;
+  transition: var(--nm-transition);
+}
+
+.select-wrap:focus-within::after {
+  background-color: var(--color-accent);
+}
+
+/* Native dropdown list is OS-rendered; keep it in the same palette. */
+select option {
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

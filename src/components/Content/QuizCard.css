@@ -33,6 +33,10 @@
   margin: 16px 0;
 }
 
+.quiz-answer-area {
+  margin-top: 4px;
+}
+
 .quiz-option {
   display: flex;
   align-items: center;

@@ -40,7 +40,7 @@ export default function ChatPanel({ onOpenSettings, onNavigate }: Props) {
   }, [messages.length]);
 
   return (
-    <div className="chat-panel">
+    <div className="chat-shell">
       <div className="chat-sidebar">
         <div className="chat-sidebar-header">
           <span>会话</span>

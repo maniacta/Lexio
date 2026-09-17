@@ -35,7 +35,20 @@
   box-shadow: var(--nm-i1);
 }
 
-.source-item-header,
+.source-item-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.source-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
 .kp-title {
   display: block;
   font-size: 14px;
