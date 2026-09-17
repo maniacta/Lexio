@@ -11,11 +11,9 @@ pub fn get_all_settings(db: &Database) -> Result<Vec<(String, String)>, String> 
     let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn.prepare("SELECT key, value FROM settings")
         .map_err(crate::error::internal)?;
-    let rows: Vec<(String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let rows = crate::repo::rows(
+        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))),
+    )?;
     Ok(rows)
 }
 
@@ -43,8 +41,8 @@ pub fn list_providers(db: &Database) -> Result<Vec<ProviderWithModels>, String> 
         let mut stmt = conn.prepare(
             "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at FROM model_providers ORDER BY created_at ASC"
         ).map_err(crate::error::internal)?;
-        let result: Vec<ModelProvider> = stmt
-            .query_map([], |row| {
+        let result = crate::repo::rows(
+        stmt.query_map([], |row| {
                 Ok(ModelProvider {
                     id: row.get(0)?, name: row.get(1)?, base_url: row.get(2)?,
                     api_key: row.get(3)?, api_format: row.get(4)?,
@@ -52,10 +50,8 @@ pub fn list_providers(db: &Database) -> Result<Vec<ProviderWithModels>, String> 
                     is_default: row.get::<_, i32>(6)? != 0,
                     created_at: row.get(7)?,
                 })
-            })
-            .map_err(crate::error::internal)?
-            .filter_map(|r| r.ok())
-            .collect();
+            }),
+        )?;
         result
     };
 
@@ -93,7 +89,7 @@ pub fn get_provider(db: &Database, id: &str) -> Result<Option<ModelProvider>, St
     let mut stmt = conn.prepare(
         "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at FROM model_providers WHERE id = ?1"
     ).map_err(crate::error::internal)?;
-    let mut rows = stmt.query_map([id], |row| {
+    let rows = stmt.query_map([id], |row| {
         Ok(ModelProvider {
             id: row.get(0)?, name: row.get(1)?, base_url: row.get(2)?,
             api_key: row.get(3)?, api_format: row.get(4)?,
@@ -102,7 +98,7 @@ pub fn get_provider(db: &Database, id: &str) -> Result<Option<ModelProvider>, St
             created_at: row.get(7)?,
         })
     }).map_err(crate::error::internal)?;
-    Ok(rows.next().and_then(|r| r.ok()))
+    crate::repo::one(rows)
 }
 
 pub fn create_provider(db: &Database, req: &CreateProviderRequest) -> Result<ModelProvider, String> {
@@ -302,17 +298,15 @@ fn list_models_by_provider(db: &Database, provider_id: &str) -> Result<Vec<Provi
     let mut stmt = conn.prepare(
         "SELECT id, provider_id, model_name, temperature, max_tokens, is_default FROM provider_models WHERE provider_id = ?1 ORDER BY model_name ASC"
     ).map_err(crate::error::internal)?;
-    let models: Vec<ProviderModel> = stmt
-        .query_map([provider_id], |row| {
+    let models = crate::repo::rows(
+        stmt.query_map([provider_id], |row| {
             Ok(ProviderModel {
                 id: row.get(0)?, provider_id: row.get(1)?, model_name: row.get(2)?,
                 temperature: row.get(3)?, max_tokens: row.get(4)?,
                 is_default: row.get::<_, i32>(5)? != 0,
             })
-        })
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+        }),
+    )?;
     Ok(models)
 }
 
@@ -477,7 +471,7 @@ pub fn get_model_full(db: &Database, model_id: &str) -> Result<Option<(ModelProv
          FROM provider_models pm JOIN model_providers mp ON pm.provider_id = mp.id
          WHERE pm.id = ?1"
     ).map_err(crate::error::internal)?;
-    let mut rows = stmt.query_map([model_id], |row| {
+    let rows = stmt.query_map([model_id], |row| {
         Ok((
             ModelProvider {
                 id: row.get(6)?, name: row.get(7)?, base_url: row.get(8)?,
@@ -493,7 +487,7 @@ pub fn get_model_full(db: &Database, model_id: &str) -> Result<Option<(ModelProv
             },
         ))
     }).map_err(crate::error::internal)?;
-    Ok(rows.next().and_then(|r| r.ok()))
+    crate::repo::one(rows)
 }
 
 // ── Task Models ──
@@ -503,13 +497,11 @@ pub fn get_task_models(db: &Database) -> Result<Vec<TaskModelMapping>, String> {
     let mut stmt = conn.prepare(
         "SELECT task_name, model_id FROM task_models ORDER BY task_name ASC"
     ).map_err(crate::error::internal)?;
-    let tasks: Vec<TaskModelMapping> = stmt
-        .query_map([], |row| {
+    let tasks = crate::repo::rows(
+        stmt.query_map([], |row| {
             Ok(TaskModelMapping { task_name: row.get(0)?, model_id: row.get(1)? })
-        })
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+        }),
+    )?;
     Ok(tasks)
 }
 
@@ -691,11 +683,10 @@ pub fn migrate_encrypt_api_keys(db: &Database) -> Result<(), String> {
         let mut stmt = conn
             .prepare("SELECT id, api_key FROM model_providers")
             .map_err(crate::error::internal)?;
-        let mapped: Result<Vec<_>, _> = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
-            .map_err(crate::error::internal)?
-            .collect();
-        mapped.map_err(crate::error::internal)?
+        let mapped = crate::repo::rows(
+            stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))),
+        )?;
+        mapped
     };
 
     for (id, key) in rows {
@@ -769,11 +760,7 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
              WHERE lower(name) = 'deepseek' OR lower(base_url) LIKE '%deepseek.com%'",
         )
         .map_err(crate::error::internal)?;
-    let provider_ids: Vec<String> = stmt
-        .query_map([], |row| row.get(0))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let provider_ids: Vec<String> = crate::repo::rows(stmt.query_map([], |row| row.get(0)))?;
     drop(stmt);
 
     for provider_id in provider_ids {

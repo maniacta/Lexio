@@ -28,11 +28,9 @@ pub fn list_plans(db: &Database) -> Result<Vec<LearningPlan>, String> {
     let mut stmt = conn
         .prepare("SELECT id, title, goal, kp_ids, status, created_at FROM learning_plans ORDER BY created_at DESC")
         .map_err(crate::error::internal)?;
-    let plans: Vec<LearningPlan> = stmt
-        .query_map([], |row| plan_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let plans = crate::repo::rows(
+        stmt.query_map([], |row| plan_from_row(row)),
+    )?;
     Ok(plans)
 }
 
@@ -41,10 +39,10 @@ pub fn get_plan(db: &Database, id: &str) -> Result<Option<LearningPlan>, String>
     let mut stmt = conn
         .prepare("SELECT id, title, goal, kp_ids, status, created_at FROM learning_plans WHERE id = ?1")
         .map_err(crate::error::internal)?;
-    let mut rows = stmt
+    let rows = stmt
         .query_map([id], |row| plan_from_row(row))
         .map_err(crate::error::internal)?;
-    Ok(rows.next().and_then(|r| r.ok()))
+    crate::repo::one(rows)
 }
 
 pub fn upsert_mastery(db: &Database, record: &MasteryRecord) -> Result<(), String> {
@@ -62,11 +60,9 @@ pub fn get_due_reviews(db: &Database) -> Result<Vec<MasteryRecord>, String> {
     let mut stmt = conn
         .prepare("SELECT id, kp_id, ease_factor, interval_days, repetitions, next_review_at, last_reviewed_at FROM mastery_records WHERE next_review_at <= ?1 ORDER BY next_review_at ASC")
         .map_err(crate::error::internal)?;
-    let records: Vec<MasteryRecord> = stmt
-        .query_map([&now], |row| mastery_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let records = crate::repo::rows(
+        stmt.query_map([&now], |row| mastery_from_row(row)),
+    )?;
     Ok(records)
 }
 
@@ -106,10 +102,10 @@ pub fn get_mastery_by_kp(db: &Database, kp_id: &str) -> Result<Option<MasteryRec
     let mut stmt = conn
         .prepare("SELECT id, kp_id, ease_factor, interval_days, repetitions, next_review_at, last_reviewed_at FROM mastery_records WHERE kp_id = ?1")
         .map_err(crate::error::internal)?;
-    let mut rows = stmt
+    let rows = stmt
         .query_map([kp_id], |row| mastery_from_row(row))
         .map_err(crate::error::internal)?;
-    Ok(rows.next().and_then(|r| r.ok()))
+    crate::repo::one(rows)
 }
 
 /// Return due reviews along with the associated KnowledgePoint data.
@@ -128,8 +124,8 @@ pub fn get_due_reviews_with_kp(db: &Database) -> Result<Vec<serde_json::Value>, 
         )
         .map_err(crate::error::internal)?;
 
-    let items: Vec<serde_json::Value> = stmt
-        .query_map([&now], |row| {
+    let items = crate::repo::rows(
+        stmt.query_map([&now], |row| {
             let tags_raw: String = row.get(11)?;
             let tags: Vec<String> = serde_json::from_str(&tags_raw).unwrap_or_default();
             let source_ids_raw: String = row.get(12)?;
@@ -154,10 +150,8 @@ pub fn get_due_reviews_with_kp(db: &Database) -> Result<Vec<serde_json::Value>, 
                     "created_at": row.get::<_, String>(13)?
                 }
             }))
-        })
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+        }),
+    )?;
 
     Ok(items)
 }

@@ -24,11 +24,9 @@ pub fn get_relations_for_kp(db: &Database, kp_id: &str) -> Result<Vec<Relation>,
     let mut stmt = conn
         .prepare("SELECT id, from_kp_id, to_kp_id, relation_type, created_at FROM relations WHERE from_kp_id = ?1 OR to_kp_id = ?1")
         .map_err(crate::error::internal)?;
-    let relations: Vec<Relation> = stmt
-        .query_map([kp_id], |row| relation_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let relations = crate::repo::rows(
+        stmt.query_map([kp_id], |row| relation_from_row(row)),
+    )?;
     Ok(relations)
 }
 

@@ -31,11 +31,9 @@ pub fn list_sources(db: &Database, include_hidden: bool) -> Result<Vec<Source>, 
         "SELECT id, title, type, content, tags, origin, source_url, hidden, created_at FROM sources WHERE hidden = 0 ORDER BY created_at DESC"
     };
     let mut stmt = conn.prepare(query).map_err(crate::error::internal)?;
-    let sources: Vec<Source> = stmt
-        .query_map([], |row| source_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let sources = crate::repo::rows(
+        stmt.query_map([], |row| source_from_row(row)),
+    )?;
     Ok(sources)
 }
 
@@ -44,10 +42,10 @@ pub fn get_source(db: &Database, id: &str) -> Result<Option<Source>, String> {
     let mut stmt = conn
         .prepare("SELECT id, title, type, content, tags, origin, source_url, hidden, created_at FROM sources WHERE id = ?1")
         .map_err(crate::error::internal)?;
-    let mut rows = stmt
+    let rows = stmt
         .query_map([id], |row| source_from_row(row))
         .map_err(crate::error::internal)?;
-    Ok(rows.next().and_then(|r| r.ok()))
+    crate::repo::one(rows)
 }
 
 pub fn toggle_hidden(db: &Database, id: &str, hidden: bool) -> Result<(), String> {
@@ -71,11 +69,9 @@ pub fn search_sources(db: &Database, query: &str) -> Result<Vec<Source>, String>
              ORDER BY fts.rank",
         )
         .map_err(crate::error::internal)?;
-    let sources: Vec<Source> = stmt
-        .query_map([&escaped], |row| source_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let sources = crate::repo::rows(
+        stmt.query_map([&escaped], |row| source_from_row(row)),
+    )?;
     Ok(sources)
 }
 
@@ -131,5 +127,35 @@ mod tests {
         create_source(&db, &src_req("quotes", "带引号 \" 的内容")).unwrap();
         let hits = search_sources(&db, "\"quote\"").unwrap();
         assert!(hits.len() <= 1);
+    }
+
+    /// A type-mismatched column used to vanish: `filter_map(|r| r.ok())` skipped
+    /// the row and `list_sources` returned only the well-formed ones. The same
+    /// row through `get_source` used to look like "not found".
+    #[test]
+    fn a_corrupt_row_is_an_error_not_a_shorter_list() {
+        let db = test_db();
+        create_source(&db, &src_req("ok", "content")).unwrap();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO sources (id, title, type, content, tags, origin, hidden)
+                 VALUES ('bad', 't', 'text', 'c', '[]', 'user', 'not-an-int')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let err = list_sources(&db, true).unwrap_err();
+        assert!(
+            crate::error::is_internal(&err),
+            "mapping failure must not look like a user-facing 400: {err}"
+        );
+
+        let get_err = get_source(&db, "bad").unwrap_err();
+        assert!(
+            crate::error::is_internal(&get_err),
+            "a corrupt row must not look missing: {get_err}"
+        );
     }
 }

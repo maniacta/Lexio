@@ -28,11 +28,9 @@ pub fn list_kps(db: &Database) -> Result<Vec<KnowledgePoint>, String> {
     let mut stmt = conn
         .prepare("SELECT id, title, summary, content, tags, source_ids, created_at FROM knowledge_points ORDER BY created_at DESC")
         .map_err(crate::error::internal)?;
-    let kps: Vec<KnowledgePoint> = stmt
-        .query_map([], |row| kp_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let kps = crate::repo::rows(
+        stmt.query_map([], |row| kp_from_row(row)),
+    )?;
     Ok(kps)
 }
 
@@ -41,10 +39,10 @@ pub fn get_kp(db: &Database, id: &str) -> Result<Option<KnowledgePoint>, String>
     let mut stmt = conn
         .prepare("SELECT id, title, summary, content, tags, source_ids, created_at FROM knowledge_points WHERE id = ?1")
         .map_err(crate::error::internal)?;
-    let mut rows = stmt
+    let rows = stmt
         .query_map([id], |row| kp_from_row(row))
         .map_err(crate::error::internal)?;
-    Ok(rows.next().and_then(|r| r.ok()))
+    crate::repo::one(rows)
 }
 
 pub fn list_kps_by_ids(db: &Database, ids: &[String]) -> Result<Vec<KnowledgePoint>, String> {
@@ -59,11 +57,9 @@ pub fn list_kps_by_ids(db: &Database, ids: &[String]) -> Result<Vec<KnowledgePoi
     );
     let mut stmt = conn.prepare(&sql).map_err(crate::error::internal)?;
     let params: Vec<&dyn rusqlite::types::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
-    let kps: Vec<KnowledgePoint> = stmt
-        .query_map(params.as_slice(), |row| kp_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let kps = crate::repo::rows(
+        stmt.query_map(params.as_slice(), |row| kp_from_row(row)),
+    )?;
     Ok(kps)
 }
 
@@ -82,11 +78,9 @@ pub fn search_kps(db: &Database, query: &str) -> Result<Vec<KnowledgePoint>, Str
              ORDER BY fts.rank",
         )
         .map_err(crate::error::internal)?;
-    let kps: Vec<KnowledgePoint> = stmt
-        .query_map([&escaped], |row| kp_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let kps = crate::repo::rows(
+        stmt.query_map([&escaped], |row| kp_from_row(row)),
+    )?;
     Ok(kps)
 }
 
@@ -114,11 +108,9 @@ pub fn delete_kp(db: &Database, id: &str) -> Result<(), String> {
         let mut stmt = tx
             .prepare("SELECT id, kp_ids FROM learning_plans")
             .map_err(crate::error::internal)?;
-        let plans: Vec<(String, String)> = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
-            .map_err(crate::error::internal)?
-            .filter_map(|r| r.ok())
-            .collect();
+        let plans = crate::repo::rows(
+        stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))),
+        )?;
         for (plan_id, kp_ids_str) in plans {
             let ids: Vec<String> = serde_json::from_str(&kp_ids_str).unwrap_or_default();
             if ids.iter().any(|i| i == id) {

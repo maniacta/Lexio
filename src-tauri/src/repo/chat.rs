@@ -76,8 +76,8 @@ pub fn list_sessions(db: &Database) -> Result<Vec<ChatSession>, String> {
              ORDER BY s.updated_at DESC",
         )
         .map_err(crate::error::internal)?;
-    let sessions: Vec<ChatSession> = stmt
-        .query_map([], |row| {
+    let sessions = crate::repo::rows(
+        stmt.query_map([], |row| {
             Ok(ChatSession {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -85,10 +85,8 @@ pub fn list_sessions(db: &Database) -> Result<Vec<ChatSession>, String> {
                 updated_at: row.get(3)?,
                 message_count: row.get(4)?,
             })
-        })
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+        }),
+    )?;
     Ok(sessions)
 }
 
@@ -118,8 +116,8 @@ pub fn get_messages(db: &Database, session_id: &str) -> Result<Vec<ChatMessage>,
              FROM chat_messages WHERE session_id = ?1 ORDER BY created_at ASC, rowid ASC",
         )
         .map_err(crate::error::internal)?;
-    let messages: Vec<ChatMessage> = stmt
-        .query_map([session_id], |row| {
+    let messages = crate::repo::rows(
+        stmt.query_map([session_id], |row| {
             Ok(ChatMessage {
                 id: row.get(0)?,
                 session_id: row.get(1)?,
@@ -129,10 +127,8 @@ pub fn get_messages(db: &Database, session_id: &str) -> Result<Vec<ChatMessage>,
                 context: row.get(5)?,
                 created_at: row.get(6)?,
             })
-        })
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+        }),
+    )?;
     Ok(messages)
 }
 

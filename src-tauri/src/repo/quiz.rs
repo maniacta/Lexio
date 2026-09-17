@@ -16,11 +16,9 @@ pub fn get_questions_by_kp(db: &Database, kp_id: &str) -> Result<Vec<QuizQuestio
     let mut stmt = conn
         .prepare("SELECT id, kp_id, type, question, options, answer, explanation FROM quiz_questions WHERE kp_id = ?1")
         .map_err(crate::error::internal)?;
-    let questions: Vec<QuizQuestion> = stmt
-        .query_map([kp_id], |row| question_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let questions = crate::repo::rows(
+        stmt.query_map([kp_id], |row| question_from_row(row)),
+    )?;
     Ok(questions)
 }
 
@@ -34,11 +32,9 @@ pub fn get_questions_by_ids(db: &Database, ids: &[String]) -> Result<Vec<QuizQue
     );
     let mut stmt = conn.prepare(&sql).map_err(crate::error::internal)?;
     let params: Vec<&dyn rusqlite::types::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
-    let questions: Vec<QuizQuestion> = stmt
-        .query_map(params.as_slice(), |row| question_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let questions = crate::repo::rows(
+        stmt.query_map(params.as_slice(), |row| question_from_row(row)),
+    )?;
     Ok(questions)
 }
 
@@ -65,11 +61,9 @@ pub fn get_attempts_by_kp(db: &Database, kp_id: &str) -> Result<Vec<QuizAttempt>
     let mut stmt = conn
         .prepare("SELECT qa.id, qa.question_id, qa.user_answer, qa.is_correct, qa.attempted_at FROM quiz_attempts qa JOIN quiz_questions qq ON qa.question_id = qq.id WHERE qq.kp_id = ?1 ORDER BY qa.attempted_at DESC")
         .map_err(crate::error::internal)?;
-    let attempts: Vec<QuizAttempt> = stmt
-        .query_map([kp_id], |row| attempt_from_row(row))
-        .map_err(crate::error::internal)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let attempts = crate::repo::rows(
+        stmt.query_map([kp_id], |row| attempt_from_row(row)),
+    )?;
     Ok(attempts)
 }
 
