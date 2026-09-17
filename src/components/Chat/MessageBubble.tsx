@@ -1,6 +1,6 @@
 import ReactMarkdown from "react-markdown";
-import rehypeSanitize from "rehype-sanitize";
 import type { ChatMessage, ChatAction } from "../../types";
+import { markdownSanitize } from "../../utils/markdownSanitize";
 import "./MessageBubble.css";
 
 interface Props {
@@ -21,7 +21,7 @@ export default function MessageBubble({ message, onAction }: Props) {
         {isUser ? (
           <p>{message.content}</p>
         ) : (
-          <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{message.content}</ReactMarkdown>
+          <ReactMarkdown rehypePlugins={[markdownSanitize]}>{message.content}</ReactMarkdown>
         )}
         {actions.length > 0 && (
           <div className="message-actions">

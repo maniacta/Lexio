@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeSanitize from "rehype-sanitize";
 import { api } from "../../api/client";
 import type { KnowledgePoint, Relation } from "../../types";
 import { useQuiz } from "../../hooks/useQuiz";
 import { formatApiError, isAbortError } from "../../utils/errors";
+import { markdownSanitize } from "../../utils/markdownSanitize";
 import QuizCard from "./QuizCard";
 import "./LearningView.css";
 
@@ -116,7 +116,7 @@ export default function LearningView({ kpId, autoStartQuiz }: Props) {
       </div>
 
       <div className="learning-content">
-        <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{kp.content}</ReactMarkdown>
+        <ReactMarkdown rehypePlugins={[markdownSanitize]}>{kp.content}</ReactMarkdown>
       </div>
 
       {relations.length > 0 && (
