@@ -98,9 +98,41 @@ export interface AiResearchResult {
   plan: LearningPlan;
 }
 
+export interface ChatAction {
+  type: "navigate_learning" | "start_quiz" | "view_source" | "start_research";
+  label: string;
+  payload: { kpId?: string; kpTitle?: string; sourceId?: string; topic?: string };
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  actions?: ChatAction[];
+  context?: {
+    plan?: LearningPlan;
+    kps?: KnowledgePoint[];
+  };
+}
+
+export interface ChatRequest {
+  messages: { role: string; content: string }[];
+  context?: {
+    plan_id?: string;
+    current_kp_id?: string;
+  };
+}
+
+export interface ChatResponse {
+  content: string;
+  actions: ChatAction[];
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  plan_id: string | null;
+  message_count: number;
+  updated_at: string;
 }
 
 export interface ModelProvider {

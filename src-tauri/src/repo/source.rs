@@ -60,12 +60,19 @@ pub fn toggle_hidden(db: &Database, id: &str, hidden: bool) -> Result<(), String
 }
 
 pub fn search_sources(db: &Database, query: &str) -> Result<Vec<Source>, String> {
+    // Escape as an FTS5 phrase; external-content table queried via rowid JOIN.
+    let escaped = format!("\"{}\"", query.replace('"', "\"\""));
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, title, type, content, tags, origin, source_url, hidden, created_at FROM sources WHERE sources_fts MATCH ?1 ORDER BY rank")
+        .prepare(
+            "SELECT s.id, s.title, s.type, s.content, s.tags, s.origin, s.source_url, s.hidden, s.created_at
+             FROM sources s
+             JOIN (SELECT rowid, rank FROM sources_fts WHERE sources_fts MATCH ?1) fts ON s.rowid = fts.rowid
+             ORDER BY fts.rank",
+        )
         .map_err(|e| e.to_string())?;
     let sources: Vec<Source> = stmt
-        .query_map([query], |row| source_from_row(row))
+        .query_map([&escaped], |row| source_from_row(row))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -85,4 +92,44 @@ fn source_from_row(row: &rusqlite::Row) -> rusqlite::Result<Source> {
         hidden: row.get::<_, i32>(7)? != 0,
         created_at: row.get(8)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::CreateSourceRequest;
+
+    fn test_db() -> Database {
+        let db = Database::new(":memory:").expect("in-memory db");
+        db.migrate().expect("migrate");
+        db
+    }
+
+    fn src_req(title: &str, content: &str) -> CreateSourceRequest {
+        CreateSourceRequest {
+            title: title.into(),
+            source_type: "text".into(),
+            content: content.into(),
+            tags: vec![],
+            origin: "user".into(),
+            source_url: None,
+        }
+    }
+
+    #[test]
+    fn search_sources_matches_via_fts() {
+        let db = test_db();
+        create_source(&db, &src_req("HTTP 缓存", "Cache-Control 与 ETag")).unwrap();
+        let hits = search_sources(&db, "缓存").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "HTTP 缓存");
+    }
+
+    #[test]
+    fn search_sources_escapes_special_chars() {
+        let db = test_db();
+        create_source(&db, &src_req("quotes", "带引号 \" 的内容")).unwrap();
+        let hits = search_sources(&db, "\"quote\"").unwrap();
+        assert!(hits.len() <= 1);
+    }
 }

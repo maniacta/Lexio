@@ -36,6 +36,17 @@ pub fn list_plans(db: &Database) -> Result<Vec<LearningPlan>, String> {
     Ok(plans)
 }
 
+pub fn get_plan(db: &Database, id: &str) -> Result<Option<LearningPlan>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, title, goal, kp_ids, status, created_at FROM learning_plans WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query_map([id], |row| plan_from_row(row))
+        .map_err(|e| e.to_string())?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
 pub fn upsert_mastery(db: &Database, record: &MasteryRecord) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     conn.execute(
@@ -57,6 +68,37 @@ pub fn get_due_reviews(db: &Database) -> Result<Vec<MasteryRecord>, String> {
         .filter_map(|r| r.ok())
         .collect();
     Ok(records)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_db() -> Database {
+        let db = Database::new(":memory:").expect("in-memory db");
+        db.migrate().expect("migrate");
+        db
+    }
+
+    #[test]
+    fn get_plan_returns_existing_plan() {
+        let db = test_db();
+        let req = CreateLearningPlanRequest {
+            title: "title".into(),
+            goal: "goal".into(),
+            kp_ids: vec![],
+        };
+        let plan = create_plan(&db, &req).unwrap();
+        let fetched = get_plan(&db, &plan.id).unwrap();
+        assert!(fetched.is_some());
+        assert_eq!(fetched.unwrap().title, "title");
+    }
+
+    #[test]
+    fn get_plan_returns_none_for_missing() {
+        let db = test_db();
+        assert!(get_plan(&db, "nope").unwrap().is_none());
+    }
 }
 
 pub fn get_mastery_by_kp(db: &Database, kp_id: &str) -> Result<Option<MasteryRecord>, String> {

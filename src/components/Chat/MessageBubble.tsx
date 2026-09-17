@@ -1,13 +1,14 @@
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
-import type { ChatMessage } from "../../types";
+import type { ChatMessage, ChatAction } from "../../types";
 import "./MessageBubble.css";
 
 interface Props {
   message: ChatMessage;
+  onAction?: (action: ChatAction) => void;
 }
 
-export default function MessageBubble({ message }: Props) {
+export default function MessageBubble({ message, onAction }: Props) {
   const isUser = message.role === "user";
 
   return (
@@ -18,6 +19,15 @@ export default function MessageBubble({ message }: Props) {
           <p>{message.content}</p>
         ) : (
           <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{message.content}</ReactMarkdown>
+        )}
+        {message.actions && message.actions.length > 0 && (
+          <div className="message-actions">
+            {message.actions.map((a, i) => (
+              <button key={i} className="btn-action" onClick={() => onAction?.(a)}>
+                {a.label}
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>

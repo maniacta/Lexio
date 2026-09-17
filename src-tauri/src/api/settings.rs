@@ -87,7 +87,17 @@ pub async fn create_provider(
     State(state): State<&'static AppState>,
     Json(req): Json<CreateProviderRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    let start = std::time::Instant::now();
     let p = blocking::run_user(move || repo::settings::create_provider(state.db, &req)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "create_provider",
+        status_code = 201,
+        duration_ms = duration_ms,
+    );
     Ok((StatusCode::CREATED, Json(serde_json::to_value(&p).unwrap())))
 }
 
@@ -96,7 +106,19 @@ pub async fn update_provider(
     Path(id): Path<String>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let audit_id = id.clone();
+    let start = std::time::Instant::now();
     blocking::run_user(move || repo::settings::update_provider(state.db, &id, &req)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "update_provider",
+        status_code = 200,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"provider_id": audit_id}),
+    );
     Ok(StatusCode::OK)
 }
 
@@ -104,7 +126,19 @@ pub async fn delete_provider(
     State(state): State<&'static AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let audit_id = id.clone();
+    let start = std::time::Instant::now();
     blocking::run_user(move || repo::settings::delete_provider(state.db, &id)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "delete_provider",
+        status_code = 204,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"provider_id": audit_id}),
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -115,7 +149,19 @@ pub async fn create_model(
     Path(provider_id): Path<String>,
     Json(req): Json<CreateModelRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    let audit_provider = provider_id.clone();
+    let start = std::time::Instant::now();
     let m = blocking::run_user(move || repo::settings::create_model(state.db, &provider_id, &req)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "create_model",
+        status_code = 201,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"provider_id": audit_provider}),
+    );
     Ok((StatusCode::CREATED, Json(serde_json::to_value(&m).unwrap())))
 }
 
@@ -124,8 +170,21 @@ pub async fn update_model(
     Path((provider_id, model_id)): Path<(String, String)>,
     Json(req): Json<UpdateModelRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let audit_provider = provider_id.clone();
+    let audit_model = model_id.clone();
+    let start = std::time::Instant::now();
     blocking::run_user(move || repo::settings::update_model(state.db, &provider_id, &model_id, &req))
         .await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "update_model",
+        status_code = 200,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"provider_id": audit_provider, "model_id": audit_model}),
+    );
     Ok(StatusCode::OK)
 }
 
@@ -133,8 +192,21 @@ pub async fn delete_model(
     State(state): State<&'static AppState>,
     Path((provider_id, model_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let audit_provider = provider_id.clone();
+    let audit_model = model_id.clone();
+    let start = std::time::Instant::now();
     blocking::run_user(move || repo::settings::delete_model(state.db, &provider_id, &model_id))
         .await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "delete_model",
+        status_code = 204,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"provider_id": audit_provider, "model_id": audit_model}),
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -142,10 +214,23 @@ pub async fn set_model_default(
     State(state): State<&'static AppState>,
     Path((provider_id, model_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let audit_provider = provider_id.clone();
+    let audit_model = model_id.clone();
+    let start = std::time::Instant::now();
     blocking::run_user(move || {
         repo::settings::set_model_default(state.db, &provider_id, &model_id)
     })
     .await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "set_model_default",
+        status_code = 200,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"provider_id": audit_provider, "model_id": audit_model}),
+    );
     Ok(StatusCode::OK)
 }
 
@@ -170,7 +255,19 @@ pub async fn set_task_model(
             format!("Invalid task name: {}", task_name),
         ));
     }
+    let audit_task = task_name.clone();
+    let start = std::time::Instant::now();
     blocking::run_user(move || repo::settings::set_task_model(state.db, &task_name, &req)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "set_task_model",
+        status_code = 200,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"task": audit_task}),
+    );
     Ok(StatusCode::OK)
 }
 
@@ -180,6 +277,7 @@ pub async fn update_general(
     State(state): State<&'static AppState>,
     Json(req): Json<GeneralSettings>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let start = std::time::Instant::now();
     blocking::run(move || {
         let mut entries = Vec::new();
         if let Some(v) = &req.theme {
@@ -197,6 +295,15 @@ pub async fn update_general(
         repo::settings::set_settings(state.db, &entries)
     })
     .await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "settings",
+        action = "update_general",
+        status_code = 200,
+        duration_ms = duration_ms,
+    );
     Ok(StatusCode::OK)
 }
 

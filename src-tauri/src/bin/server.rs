@@ -29,6 +29,12 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
+        // Logging (file logs + audit DB layer) — same as Tauri mode. Must run
+        // inside the tokio runtime: AuditDbLayer spawns a background task.
+        let logs_dir = PathBuf::from("logs");
+        lexio_lib::init_logging(db, &logs_dir);
+        lexio_lib::repo::audit::prune(db, lexio_lib::AUDIT_LOG_RETENTION_DAYS);
+
         let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
         let listener = TcpListener::bind(addr).await.unwrap();
         println!("Lexio backend running on http://127.0.0.1:3001");

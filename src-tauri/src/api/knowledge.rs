@@ -15,7 +15,19 @@ pub async fn create_kp(
     State(state): State<&'static AppState>,
     Json(req): Json<CreateKnowledgePointRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    let audit_title = req.title.clone();
+    let start = std::time::Instant::now();
     let kp = blocking::run(move || repo::knowledge::create_kp(state.db, &req)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "knowledge",
+        action = "create_kp",
+        status_code = 201,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"title": audit_title}),
+    );
     Ok((StatusCode::CREATED, Json(serde_json::to_value(&kp).unwrap())))
 }
 
@@ -51,6 +63,18 @@ pub async fn delete_kp(
     State(state): State<&'static AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let audit_id = id.clone();
+    let start = std::time::Instant::now();
     blocking::run(move || repo::knowledge::delete_kp(state.db, &id)).await?;
+    let duration_ms = start.elapsed().as_millis() as i64;
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "knowledge",
+        action = "delete_kp",
+        status_code = 204,
+        duration_ms = duration_ms,
+        params_summary = %serde_json::json!({"kp_id": audit_id}),
+    );
     Ok(StatusCode::NO_CONTENT)
 }

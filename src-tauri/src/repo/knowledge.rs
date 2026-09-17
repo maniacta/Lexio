@@ -68,12 +68,22 @@ pub fn list_kps_by_ids(db: &Database, ids: &[String]) -> Result<Vec<KnowledgePoi
 }
 
 pub fn search_kps(db: &Database, query: &str) -> Result<Vec<KnowledgePoint>, String> {
+    // Escape the user query as an FTS5 phrase so special characters
+    // (quotes, AND/OR/NOT operators, prefixes, hyphens, ...) cannot turn
+    // into a query syntax error. The external-content FTS table is queried
+    // via rowid JOIN against the base table.
+    let escaped = format!("\"{}\"", query.replace('"', "\"\""));
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, title, summary, content, tags, source_ids, created_at FROM knowledge_points WHERE kp_fts MATCH ?1 ORDER BY rank")
+        .prepare(
+            "SELECT kp.id, kp.title, kp.summary, kp.content, kp.tags, kp.source_ids, kp.created_at
+             FROM knowledge_points kp
+             JOIN (SELECT rowid, rank FROM kp_fts WHERE kp_fts MATCH ?1) fts ON kp.rowid = fts.rowid
+             ORDER BY fts.rank",
+        )
         .map_err(|e| e.to_string())?;
     let kps: Vec<KnowledgePoint> = stmt
-        .query_map([query], |row| kp_from_row(row))
+        .query_map([&escaped], |row| kp_from_row(row))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -98,6 +108,34 @@ pub fn delete_kp(db: &Database, id: &str) -> Result<(), String> {
         [id],
     )
     .map_err(|e| e.to_string())?;
+
+    // Remove the deleted KP id from every plan's kp_ids JSON array.
+    {
+        let mut stmt = tx
+            .prepare("SELECT id, kp_ids FROM learning_plans")
+            .map_err(|e| e.to_string())?;
+        let plans: Vec<(String, String)> = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        for (plan_id, kp_ids_str) in plans {
+            let ids: Vec<String> = serde_json::from_str(&kp_ids_str).unwrap_or_default();
+            if ids.iter().any(|i| i == id) {
+                let filtered = ids.into_iter().filter(|i| i != id).collect::<Vec<_>>();
+                tx.execute(
+                    "UPDATE learning_plans SET kp_ids = ?1 WHERE id = ?2",
+                    rusqlite::params![
+                        serde_json::to_string(&filtered)
+                            .unwrap_or_else(|_| "[]".to_string()),
+                        plan_id
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
     tx.execute("DELETE FROM knowledge_points WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
@@ -116,4 +154,65 @@ fn kp_from_row(row: &rusqlite::Row) -> rusqlite::Result<KnowledgePoint> {
         source_ids: serde_json::from_str(&source_ids_str).unwrap_or_default(),
         created_at: row.get(6)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::CreateKnowledgePointRequest;
+
+    fn test_db() -> Database {
+        let db = Database::new(":memory:").expect("in-memory db");
+        db.migrate().expect("migrate");
+        db
+    }
+
+    fn kp_req(title: &str, summary: &str, content: &str) -> CreateKnowledgePointRequest {
+        CreateKnowledgePointRequest {
+            title: title.into(),
+            summary: summary.into(),
+            content: content.into(),
+            tags: vec![],
+            source_ids: vec![],
+        }
+    }
+
+    #[test]
+    fn search_kps_matches_via_fts() {
+        let db = test_db();
+        create_kp(&db, &kp_req("Rust ownership", "所有权", "Rust 的所有权系统")).unwrap();
+        let hits = search_kps(&db, "所有权").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "Rust ownership");
+    }
+
+    #[test]
+    fn search_kps_escapes_special_chars() {
+        let db = test_db();
+        create_kp(&db, &kp_req("quotes", "引号", "带引号 \" 的内容")).unwrap();
+        // 引号/操作符不应导致 FTS 语法错误
+        let hits = search_kps(&db, "\"quote\"").unwrap();
+        assert!(hits.len() <= 1);
+    }
+
+    #[test]
+    fn delete_kp_removes_id_from_plans() {
+        let db = test_db();
+        let kp = create_kp(&db, &kp_req("kp", "s", "c")).unwrap();
+        let plan = crate::repo::learning::create_plan(
+            &db,
+            &crate::models::CreateLearningPlanRequest {
+                title: "p".into(),
+                goal: "g".into(),
+                kp_ids: vec![kp.id.clone()],
+            },
+        )
+        .unwrap();
+        delete_kp(&db, &kp.id).unwrap();
+        let plan2 = crate::repo::learning::get_plan(&db, &plan.id)
+            .unwrap()
+            .unwrap();
+        assert!(!plan2.kp_ids.contains(&kp.id));
+        assert!(plan2.kp_ids.is_empty());
+    }
 }
