@@ -1,4 +1,4 @@
-import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem, ProviderKindInfo, Relation, CreateRelationRequest, ChatRequest, ChatResponse, ChatSession, ChatMessage, ChatAction } from "../types";
+import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem, ProviderKindInfo, Relation, CreateRelationRequest, ChatRequest, ChatResponse, ChatSession, ChatMessage, ChatAction, AuditLogPage, AuditFacets, AuditLogQuery } from "../types";
 import { isTauri } from "../utils/tauri";
 import { isAbortError } from "../utils/errors";
 import { apiBase } from "../utils/apiBase";
@@ -313,5 +313,22 @@ export const api = {
         body: JSON.stringify({ provider_id: providerId, model_name: modelName }),
         signal,
       }),
+  },
+
+  // Audit trail (read-only)
+  audit: {
+    /**
+     * Read the audit trail. Only non-empty filters are sent, so an all-blank
+     * form asks for the newest page rather than sending meaningless parameters.
+     */
+    listLogs: (query: AuditLogQuery = {}, signal?: AbortSignal) => {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(query)) {
+        if (value === undefined || value === null || value === "") continue;
+        params.set(key, String(value));
+      }
+      return request<AuditLogPage>(`/audit/logs?${params}`, { signal });
+    },
+    facets: (signal?: AbortSignal) => request<AuditFacets>("/audit/facets", { signal }),
   },
 };

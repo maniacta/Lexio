@@ -190,7 +190,21 @@ impl Database {
             )?;
         }
 
-        conn.pragma_update(None, "user_version", 3)?;
+        if version < 4 {
+            // Audit trail integrity: `timestamp` must be the server's own clock,
+            // because a client-supplied value can be back-dated or set in the
+            // future to move an event outside the retention window (`prune`
+            // deletes by `timestamp`) or to forge the ordering of the trail. The
+            // client's value is still useful for diagnosing buffering delays, so
+            // it is kept in its own column and never used for pruning or
+            // ordering.
+            conn.execute_batch(
+                "ALTER TABLE audit_logs ADD COLUMN client_timestamp TEXT;
+                 CREATE INDEX IF NOT EXISTS idx_audit_logs_source ON audit_logs(source);",
+            )?;
+        }
+
+        conn.pragma_update(None, "user_version", 4)?;
         Ok(())
     }
 }
@@ -206,13 +220,13 @@ mod tests {
     }
 
     #[test]
-    fn migrate_sets_user_version_3() {
+    fn migrate_sets_user_version_4() {
         let db = test_db();
         let conn = db.conn.lock().unwrap();
         let v: i32 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 3);
+        assert_eq!(v, 4);
     }
 
     #[test]
@@ -231,6 +245,70 @@ mod tests {
         }
     }
 
+    /// The audit trail's authority is the server clock, so the column that holds
+    /// the client's own value must exist and be distinct from `timestamp`.
+    #[test]
+    fn audit_logs_has_client_timestamp_column() {
+        let db = test_db();
+        let conn = db.conn.lock().unwrap();
+        let n: i32 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('audit_logs') WHERE name='client_timestamp'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1, "v4 must add client_timestamp");
+    }
+
+    /// An existing v3 install must gain the column without losing its rows.
+    #[test]
+    fn upgrade_from_v3_adds_client_timestamp_and_keeps_rows() {
+        let db = Database::new(":memory:").expect("in-memory db");
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute_batch(
+                "CREATE TABLE audit_logs (
+                    id TEXT PRIMARY KEY,
+                    timestamp TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    level TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    user_action TEXT,
+                    method TEXT,
+                    path TEXT,
+                    status_code INTEGER,
+                    duration_ms INTEGER,
+                    params_summary TEXT,
+                    result_summary TEXT,
+                    error_message TEXT
+                );
+                INSERT INTO audit_logs (id, timestamp, source, level, category, action)
+                    VALUES ('old', '2026-01-01T00:00:00Z', 'backend', 'info', 'system', 'startup');
+                PRAGMA user_version = 3;",
+            )
+            .unwrap();
+        }
+
+        db.migrate().expect("upgrade from v3");
+
+        let conn = db.conn.lock().unwrap();
+        let (action, client_ts): (String, Option<String>) = conn
+            .query_row(
+                "SELECT action, client_timestamp FROM audit_logs WHERE id = 'old'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(action, "startup", "pre-existing rows must survive");
+        assert_eq!(client_ts, None, "old rows have no client timestamp");
+        let v: i32 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 4);
+    }
+
     #[test]
     fn migrate_is_idempotent() {
         let db = test_db();
@@ -239,6 +317,6 @@ mod tests {
         let v: i32 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 3);
+        assert_eq!(v, 4);
     }
 }

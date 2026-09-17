@@ -1,0 +1,209 @@
+/* Audit trail viewer — sits inside the Settings shell, so it reuses the
+   recessed/embossed surfaces rather than introducing new ones. */
+
+.audit-tab {
+  max-width: 760px;
+}
+
+.audit-filters {
+  margin-bottom: 18px;
+}
+
+.audit-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px 14px;
+}
+
+.audit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.audit-field > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.audit-field-wide {
+  grid-column: 1 / -1;
+}
+
+.audit-field select,
+.audit-field input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  outline: none;
+  box-shadow: var(--nm-i2);
+  transition: var(--nm-transition);
+}
+
+.audit-field select:focus,
+.audit-field input:focus {
+  box-shadow: var(--nm-i0);
+}
+
+.audit-filter-actions {
+  margin-top: 14px;
+}
+
+.audit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 2px 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.audit-page-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.audit-page-indicator {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+.audit-empty {
+  margin: 0;
+  padding: 28px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.audit-error {
+  min-height: 0;
+  margin-bottom: 14px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--nm-e2);
+}
+
+.audit-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audit-row {
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  box-shadow: var(--nm-e1);
+  overflow: hidden;
+}
+
+.audit-row.expanded {
+  box-shadow: var(--nm-e3);
+}
+
+.audit-row-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.audit-level {
+  flex: 0 0 auto;
+  min-width: 46px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: var(--nm-i0);
+  color: var(--color-text-secondary);
+}
+
+.audit-level-warn {
+  color: #b8860b;
+}
+
+.audit-level-error {
+  color: var(--color-danger, #d64545);
+}
+
+.audit-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.audit-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.audit-row-sub {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.audit-row-time {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.audit-detail {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 4px 14px 14px;
+  font-size: 12px;
+  box-shadow: inset 0 12px 14px -16px var(--nm-shadow-dark);
+}
+
+.audit-detail dt {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.audit-detail dd {
+  margin: 0;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.audit-monospace {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  word-break: break-word;
+}
+
+.audit-error-text {
+  color: var(--color-danger, #d64545);
+}

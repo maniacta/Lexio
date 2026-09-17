@@ -104,6 +104,8 @@ impl<S: Subscriber> Layer<S> for AuditDbLayer {
             params_summary: visitor.params_summary,
             result_summary: visitor.result_summary,
             error_message: visitor.error_message,
+            // Backend events carry no client clock.
+            client_timestamp: None,
         };
 
         // Non-blocking send; if channel is full, drop the event

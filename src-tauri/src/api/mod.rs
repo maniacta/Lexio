@@ -9,3 +9,4 @@ pub mod auth;
 pub mod relation;
 pub mod chat_routes;
 pub mod logs;
+pub mod audit;

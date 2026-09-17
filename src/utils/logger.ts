@@ -41,7 +41,12 @@ class Logger {
 
   /** Log an event. */
   log(entry: LogEntry) {
-    // Attach a per-entry timestamp so batched events keep their own time.
+    // A per-entry timestamp records the client's own clock at the moment of the
+    // event, which is what makes buffering delay diagnosable. It is not what the
+    // backend stores as the event time: the server stamps the row with its own
+    // clock and keeps this value in a separate column, because a client-supplied
+    // timestamp must not be able to move an entry out of the retention window or
+    // forge its position in the trail.
     this.buffer.push({ timestamp: new Date().toISOString(), ...entry });
     if (this.buffer.length > MAX_BUFFER) {
       this.buffer = this.buffer.slice(-MAX_BUFFER);

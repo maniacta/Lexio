@@ -4,9 +4,10 @@ import { api } from "../../api/client";
 import GeneralTab from "./GeneralTab";
 import ProvidersTab from "./ProvidersTab";
 import TaskModelsTab from "./TaskModelsTab";
+import AuditLogTab from "./AuditLogTab";
 import "./SettingsView.css";
 
-type Tab = "general" | "providers" | "tasks";
+type Tab = "general" | "providers" | "tasks" | "audit";
 
 export default function SettingsView() {
   const [tab, setTab] = useState<Tab>("general");
@@ -38,13 +39,13 @@ export default function SettingsView() {
       <h2 className="settings-title">⚙ 设置</h2>
       <div className="settings-body">
         <nav className="settings-nav">
-          {(["general", "providers", "tasks"] as Tab[]).map(t => (
+          {(["general", "providers", "tasks", "audit"] as Tab[]).map(t => (
             <button
               key={t}
               className={`settings-nav-btn ${tab === t ? "active" : ""}`}
               onClick={() => setTab(t)}
             >
-              {{ general: "通用", providers: "模型厂商", tasks: "任务模型" }[t]}
+              {{ general: "通用", providers: "模型厂商", tasks: "任务模型", audit: "审计日志" }[t]}
             </button>
           ))}
         </nav>
@@ -52,6 +53,7 @@ export default function SettingsView() {
           {tab === "general" && <GeneralTab settings={settings} onSaved={loadSettings} />}
           {tab === "providers" && <ProvidersTab settings={settings} onSaved={loadSettings} />}
           {tab === "tasks" && <TaskModelsTab settings={settings} onSaved={loadSettings} />}
+          {tab === "audit" && <AuditLogTab />}
         </div>
       </div>
     </div>

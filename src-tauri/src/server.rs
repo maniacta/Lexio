@@ -1,5 +1,6 @@
 use crate::api::{
-    ai_routes, auth, chat_routes, knowledge, learning, logs, quiz, relation, settings, sources,
+    ai_routes, audit, auth, chat_routes, knowledge, learning, logs, quiz, relation, settings,
+    sources,
 };
 use axum::{
     body::Body,
@@ -128,6 +129,9 @@ pub fn app(state: &'static ai_routes::AppState) -> Router {
         )
         // Logs
         .route("/api/logs/batch", axum::routing::post(logs::ingest_logs))
+        // Audit trail (read-only)
+        .route("/api/audit/logs", get(audit::list_logs))
+        .route("/api/audit/facets", get(audit::get_facets))
         .layer(cors())
         .layer(middleware::from_fn_with_state(state, auth::require_token))
         // Audit middleware last → outermost: runs before auth so rejected

@@ -91,6 +91,42 @@ fn mask_sensitive(value: &serde_json::Value) -> serde_json::Value {
     }
 }
 
+/// Turn one accepted entry into a row, given the server's own clock.
+///
+/// The server clock is authoritative: `timestamp` decides retention (`prune`
+/// deletes by it) and the ordering of the trail, so a client must not be able to
+/// set it — a back-dated value could push an event outside the retention window,
+/// and a future one could pin it to the top of the trail forever. The client's
+/// value is preserved in `client_timestamp` for diagnosing buffering delay only.
+fn build_record(entry: &FrontendLogEntry, server_now: &str) -> AuditRecord {
+    AuditRecord {
+        id: new_id(),
+        timestamp: server_now.to_string(),
+        client_timestamp: entry
+            .timestamp
+            .clone()
+            .filter(|t| chrono::DateTime::parse_from_rfc3339(t).is_ok()),
+        source: "frontend".to_string(),
+        level: entry.level.clone(),
+        category: entry.category.clone(),
+        action: entry.action.clone(),
+        user_action: entry.user_action.clone(),
+        method: None,
+        path: None,
+        status_code: None,
+        duration_ms: entry.duration_ms,
+        params_summary: entry
+            .params_summary
+            .as_ref()
+            .map(|v| truncate(mask_sensitive(v).to_string())),
+        result_summary: entry
+            .result_summary
+            .as_ref()
+            .map(|v| truncate(mask_sensitive(v).to_string())),
+        error_message: entry.error_message.as_ref().map(|s| truncate(s.clone())),
+    }
+}
+
 pub async fn ingest_logs(
     State(state): State<&'static AppState>,
     Json(req): Json<BatchLogRequest>,
@@ -112,37 +148,11 @@ pub async fn ingest_logs(
         );
     }
 
-    let fallback = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let server_now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let records: Vec<AuditRecord> = req
         .logs
         .iter()
-        .map(|entry| AuditRecord {
-            id: new_id(),
-            // Per-entry timestamp from the client when present and parseable.
-            timestamp: entry
-                .timestamp
-                .clone()
-                .filter(|t| chrono::DateTime::parse_from_rfc3339(t).is_ok())
-                .unwrap_or_else(|| fallback.clone()),
-            source: "frontend".to_string(),
-            level: entry.level.clone(),
-            category: entry.category.clone(),
-            action: entry.action.clone(),
-            user_action: entry.user_action.clone(),
-            method: None,
-            path: None,
-            status_code: None,
-            duration_ms: entry.duration_ms,
-            params_summary: entry
-                .params_summary
-                .as_ref()
-                .map(|v| truncate(mask_sensitive(v).to_string())),
-            result_summary: entry
-                .result_summary
-                .as_ref()
-                .map(|v| truncate(mask_sensitive(v).to_string())),
-            error_message: entry.error_message.as_ref().map(|s| truncate(s.clone())),
-        })
+        .map(|entry| build_record(entry, &server_now))
         .collect();
 
     match audit::batch_insert(state.db, &records) {
@@ -241,5 +251,77 @@ mod tests {
         let mut e = entry("info");
         e.timestamp = Some("2026-08-06T10:00:00Z".into());
         assert!(validate_entry(&e).is_ok());
+    }
+
+    // ── Server-authoritative timestamp ──
+
+    /// A client must not be able to date its own events: the row is stamped with
+    /// the server clock and the client value is demoted to diagnostics.
+    #[test]
+    fn client_timestamp_cannot_override_server_clock() {
+        let server = "2026-09-17T12:00:00.000Z";
+        let mut e = entry("info");
+        e.timestamp = Some("1999-01-01T00:00:00Z".into());
+
+        let rec = build_record(&e, server);
+
+        assert_eq!(
+            rec.timestamp, server,
+            "retention and ordering use the server"
+        );
+        assert_eq!(
+            rec.client_timestamp.as_deref(),
+            Some("1999-01-01T00:00:00Z"),
+            "the client value is kept as evidence"
+        );
+    }
+
+    /// A back-dated client timestamp must not be able to move a row out of the
+    /// retention window.
+    #[test]
+    fn backdated_client_timestamp_cannot_escape_pruning() {
+        let server = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let mut e = entry("info");
+        e.timestamp = Some("1999-01-01T00:00:00Z".into());
+
+        let rec = build_record(&e, &server);
+        let age_days = chrono::DateTime::parse_from_rfc3339(&rec.timestamp)
+            .unwrap()
+            .signed_duration_since(chrono::Utc::now())
+            .num_days();
+        assert!(age_days > -1, "the row stays inside the retention window");
+    }
+
+    /// An unparseable client value is dropped rather than stored or trusted.
+    #[test]
+    fn malformed_client_timestamp_is_dropped() {
+        let mut e = entry("info");
+        e.timestamp = Some("not-a-timestamp".into());
+        let rec = build_record(&e, "2026-09-17T12:00:00.000Z");
+        assert_eq!(rec.client_timestamp, None);
+    }
+
+    #[test]
+    fn absent_client_timestamp_is_allowed() {
+        let e = entry("info");
+        let rec = build_record(&e, "2026-09-17T12:00:00.000Z");
+        assert_eq!(rec.client_timestamp, None);
+        assert_eq!(rec.source, "frontend");
+        assert_eq!(rec.level, "info");
+    }
+
+    #[test]
+    fn build_record_masks_and_truncates_summaries() {
+        let mut e = entry("warn");
+        e.params_summary = Some(serde_json::json!({"api_key": "sk-1234", "topic": "rust"}));
+        e.error_message = Some("x".repeat(3000));
+
+        let rec = build_record(&e, "2026-09-17T12:00:00.000Z");
+
+        assert!(!rec.params_summary.unwrap().contains("sk-1234"));
+        assert_eq!(
+            rec.error_message.unwrap().chars().count(),
+            MAX_SUMMARY_LEN + 1
+        );
     }
 }

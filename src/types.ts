@@ -212,3 +212,50 @@ export interface TestConnectionResponse {
   ok: boolean;
   message: string;
 }
+
+/** One audit trail row as returned by `GET /api/audit/logs`. */
+export interface AuditLogEntry {
+  id: string;
+  /** Server clock — the authoritative time for ordering and retention. */
+  timestamp: string;
+  source: string;
+  level: "info" | "warn" | "error";
+  category: string;
+  action: string;
+  user_action: string | null;
+  method: string | null;
+  path: string | null;
+  status_code: number | null;
+  duration_ms: number | null;
+  params_summary: string | null;
+  result_summary: string | null;
+  error_message: string | null;
+  /** The originating client's clock, for diagnostics only; never trusted. */
+  client_timestamp: string | null;
+}
+
+export interface AuditLogPage {
+  logs: AuditLogEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+  timestamp_authority: string;
+}
+
+/** Values actually present in the trail, used to populate the filter UI. */
+export interface AuditFacets {
+  levels: string[];
+  sources: string[];
+  categories: string[];
+}
+
+export interface AuditLogQuery {
+  level?: string;
+  source?: string;
+  category?: string;
+  search?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
