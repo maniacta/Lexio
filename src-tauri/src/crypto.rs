@@ -16,7 +16,7 @@ const NONCE_LEN: usize = 12;
 static MASTER_KEY: OnceLock<[u8; 32]> = OnceLock::new();
 
 fn fill_random(buf: &mut [u8]) -> Result<(), String> {
-    getrandom::getrandom(buf).map_err(crate::error::internal)
+    getrandom::fill(buf).map_err(crate::error::internal)
 }
 
 /// How the master key was obtained on this run.

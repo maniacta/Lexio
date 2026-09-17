@@ -162,7 +162,7 @@ fn key_from_b64(raw: &str) -> Result<[u8; KEY_LEN], String> {
 
 fn random_key() -> Result<[u8; KEY_LEN], String> {
     let mut arr = [0u8; KEY_LEN];
-    getrandom::getrandom(&mut arr).map_err(crate::error::internal)?;
+    getrandom::fill(&mut arr).map_err(crate::error::internal)?;
     Ok(arr)
 }
 
