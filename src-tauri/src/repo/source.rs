@@ -66,6 +66,7 @@ pub fn search_sources(db: &Database, query: &str) -> Result<Vec<Source>, String>
             "SELECT s.id, s.title, s.type, s.content, s.tags, s.origin, s.source_url, s.hidden, s.created_at
              FROM sources s
              JOIN (SELECT rowid, rank FROM sources_fts WHERE sources_fts MATCH ?1) fts ON s.rowid = fts.rowid
+             WHERE s.hidden = 0
              ORDER BY fts.rank",
         )
         .map_err(crate::error::internal)?;
@@ -127,6 +128,26 @@ mod tests {
         create_source(&db, &src_req("quotes", "带引号 \" 的内容")).unwrap();
         let hits = search_sources(&db, "\"quote\"").unwrap();
         assert!(hits.len() <= 1);
+    }
+
+    #[test]
+    fn search_sources_skips_hidden_rows() {
+        let db = test_db();
+        let visible = create_source(&db, &src_req("visible cache", "ETag")).unwrap();
+        let hidden = create_source(&db, &src_req("hidden cache", "ETag")).unwrap();
+        toggle_hidden(&db, &hidden.id, true).unwrap();
+
+        let hits = search_sources(&db, "cache").unwrap();
+        let ids: Vec<&str> = hits.iter().map(|s| s.id.as_str()).collect();
+        assert!(
+            ids.contains(&visible.id.as_str()),
+            "the unhidden row must still be searchable"
+        );
+        assert!(
+            !ids.contains(&hidden.id.as_str()),
+            "a hidden row must not appear in search"
+        );
+        assert!(hits.iter().all(|s| !s.hidden));
     }
 
     /// A type-mismatched column used to vanish: `filter_map(|r| r.ok())` skipped
