@@ -1,9 +1,7 @@
 import type { Source, CreateSourceRequest, KnowledgePoint, QuizQuestion, QuizResult, LearningPlan, MasteryRecord, AiResearchResult, SettingsData, ProviderWithModels, ModelProvider, ProviderModel, CreateProviderRequest, UpdateProviderRequest, CreateModelRequest, UpdateModelRequest, TestConnectionResponse, TaskModelEntry, ReviewItem, ProviderKindInfo, Relation, CreateRelationRequest, ChatRequest, ChatResponse, ChatSession, ChatMessage, ChatAction } from "../types";
 import { isTauri } from "../utils/tauri";
 import { isAbortError } from "../utils/errors";
-
-// Vite proxy forwards /api/* to backend on localhost:3001
-const API_BASE = "/api";
+import { apiBase } from "../utils/apiBase";
 
 let cachedToken: string | null = null;
 let tokenPromise: Promise<string> | null = null;
@@ -16,7 +14,7 @@ export async function resolveApiToken(): Promise<string> {
         const { invoke } = await import("@tauri-apps/api/core");
         return invoke<string>("get_api_token");
       }
-      const res = await fetch(`${API_BASE}/auth/token`);
+      const res = await fetch(`${await apiBase()}/auth/token`);
       if (!res.ok) {
         throw new Error("UNAUTHORIZED: 无法获取本地 API Token");
       }
@@ -66,7 +64,7 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
       headers.set("Content-Type", "application/json");
     }
     headers.set("X-Lexio-Token", token);
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetch(`${await apiBase()}${path}`, {
       ...options,
       headers,
       signal: options?.signal,

@@ -1,4 +1,5 @@
 import { resolveApiToken } from "../api/client";
+import { apiBase } from "./apiBase";
 
 interface LogEntry {
   level: "info" | "warn" | "error";
@@ -15,8 +16,6 @@ interface LogEntry {
 const BATCH_SIZE = 20;
 const FLUSH_INTERVAL = 5000;
 const MAX_BUFFER = 100;
-// Vite proxy forwards /api/* to backend (same base as the api client).
-const API_BASE = "/api";
 
 class Logger {
   private buffer: LogEntry[] = [];
@@ -58,7 +57,7 @@ class Logger {
     const batch = this.buffer.splice(0);
     try {
       const token = await resolveApiToken();
-      const res = await fetch(`${API_BASE}/logs/batch`, {
+      const res = await fetch(`${await apiBase()}/logs/batch`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

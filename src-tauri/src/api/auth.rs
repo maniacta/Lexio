@@ -27,15 +27,21 @@ pub async fn require_token(
     // Defence in depth: gate every route on the Host so a DNS-rebinding page or
     // a direct foreign-origin request cannot reach the token bootstrap.
     if !host_is_allowed(host) {
-        return (
-            StatusCode::FORBIDDEN,
-            "FORBIDDEN: 仅允许本机访问本地 API",
-        )
-            .into_response();
+        return (StatusCode::FORBIDDEN, "FORBIDDEN: 仅允许本机访问本地 API").into_response();
     }
 
     let path = req.uri().path();
     if path == "/api/health" || path == "/api/auth/token" {
+        return next.run(req).await;
+    }
+
+    // CORS preflight carries no custom headers and no token by design; the
+    // CorsLayer just inside this middleware answers it. Letting it through here
+    // is required because this layer runs *outside* CorsLayer — otherwise the
+    // preflight would be rejected with 401 and the real request never sent.
+    // The Host check above has already run, so this cannot be reached by a
+    // foreign origin.
+    if is_preflight(req.method()) {
         return next.run(req).await;
     }
 
@@ -47,7 +53,11 @@ pub async fn require_token(
     if provided == Some(state.api_token.as_str()) {
         next.run(req).await
     } else {
-        (StatusCode::UNAUTHORIZED, "UNAUTHORIZED: 缺少或无效的 API Token").into_response()
+        (
+            StatusCode::UNAUTHORIZED,
+            "UNAUTHORIZED: 缺少或无效的 API Token",
+        )
+            .into_response()
     }
 }
 
@@ -101,6 +111,12 @@ fn split_host(value: &str) -> (&str, Option<&str>) {
         Some((host, port)) => (host, Some(port)),
         None => (value, None),
     }
+}
+
+/// True for a CORS preflight. Such a request never carries the token, so the
+/// token check must not apply to it.
+fn is_preflight(method: &axum::http::Method) -> bool {
+    method == axum::http::Method::OPTIONS
 }
 
 /// True when the `Host` header names a loopback/Tauri origin.
@@ -189,5 +205,20 @@ mod tests {
         assert_eq!(split_host("[::1]"), ("[::1]", None));
         assert_eq!(split_host("localhost:3001"), ("localhost", Some("3001")));
         assert_eq!(split_host("localhost"), ("localhost", None));
+    }
+
+    /// Desktop reaches the backend cross-origin, so its preflight must reach
+    /// CorsLayer instead of being stopped by the token check.
+    #[test]
+    fn preflight_bypasses_the_token_check() {
+        assert!(is_preflight(&axum::http::Method::OPTIONS));
+        for m in [
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+        ] {
+            assert!(!is_preflight(&m), "{m} must still require a token");
+        }
     }
 }
