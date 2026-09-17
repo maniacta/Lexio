@@ -95,6 +95,102 @@ mod tests {
         let db = test_db();
         assert!(get_plan(&db, "nope").unwrap().is_none());
     }
+
+    fn src(title: &str, url: Option<&str>) -> crate::models::CreateSourceRequest {
+        crate::models::CreateSourceRequest {
+            title: title.into(),
+            source_type: "text".into(),
+            content: format!("content of {title}"),
+            tags: vec![],
+            origin: "ai_search".into(),
+            source_url: url.map(|s| s.into()),
+        }
+    }
+
+    fn kp(title: &str) -> CreateKnowledgePointRequest {
+        CreateKnowledgePointRequest {
+            title: title.into(),
+            summary: "s".into(),
+            content: "c".into(),
+            tags: vec![],
+            source_ids: vec![],
+        }
+    }
+
+    fn plan(title: &str) -> CreateLearningPlanRequest {
+        CreateLearningPlanRequest {
+            title: title.into(),
+            goal: "g".into(),
+            kp_ids: vec![],
+        }
+    }
+
+    fn counts(db: &Database) -> (i64, i64, i64) {
+        let conn = db.conn.lock().unwrap();
+        let sources: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sources", [], |r| r.get(0))
+            .unwrap();
+        let kps: i64 = conn
+            .query_row("SELECT COUNT(*) FROM knowledge_points", [], |r| r.get(0))
+            .unwrap();
+        let plans: i64 = conn
+            .query_row("SELECT COUNT(*) FROM learning_plans", [], |r| r.get(0))
+            .unwrap();
+        (sources, kps, plans)
+    }
+
+    #[test]
+    fn persist_research_bundle_reuses_matching_rows() {
+        let db = test_db();
+        let sources = vec![src("HTTP", None)];
+        let kps = vec![kp("Caching")];
+        let first = persist_research_bundle(&db, &sources, &kps, &plan("HTTP")).unwrap();
+        let second = persist_research_bundle(&db, &sources, &kps, &plan("http")).unwrap();
+
+        assert_eq!(counts(&db), (1, 1, 1), "a repeat must not insert duplicates");
+        assert_eq!(first.sources[0].id, second.sources[0].id);
+        assert_eq!(first.knowledge_points[0].id, second.knowledge_points[0].id);
+        assert_eq!(first.plan.id, second.plan.id);
+    }
+
+    #[test]
+    fn persist_research_bundle_merges_new_kps_into_the_existing_plan() {
+        let db = test_db();
+        persist_research_bundle(&db, &[src("HTTP", None)], &[kp("Caching")], &plan("HTTP"))
+            .unwrap();
+        let second = persist_research_bundle(
+            &db,
+            &[src("HTTP", None)],
+            &[kp("Caching"), kp("ETag")],
+            &plan("HTTP"),
+        )
+        .unwrap();
+
+        assert_eq!(counts(&db), (1, 2, 1));
+        assert_eq!(second.plan.kp_ids.len(), 2);
+    }
+
+    #[test]
+    fn persist_research_bundle_matches_sources_by_url() {
+        let db = test_db();
+        let url = Some("https://example.com/http");
+        let first = persist_research_bundle(
+            &db,
+            &[src("Old title", url)],
+            &[kp("A")],
+            &plan("T"),
+        )
+        .unwrap();
+        let second = persist_research_bundle(
+            &db,
+            &[src("New title", url)],
+            &[kp("A")],
+            &plan("T"),
+        )
+        .unwrap();
+        assert_eq!(counts(&db), (1, 1, 1));
+        assert_eq!(first.sources[0].id, second.sources[0].id);
+    }
 }
 
 pub fn get_mastery_by_kp(db: &Database, kp_id: &str) -> Result<Option<MasteryRecord>, String> {
@@ -194,6 +290,10 @@ pub fn persist_research_bundle(
 
     let mut sources = Vec::new();
     for req in source_reqs {
+        if let Some(existing) = reuse_source(&tx, req)? {
+            sources.push(existing);
+            continue;
+        }
         let id = new_id();
         let tags = serde_json::to_string(&req.tags).unwrap_or_default();
         let now = chrono::Utc::now().to_rfc3339();
@@ -228,6 +328,10 @@ pub fn persist_research_bundle(
 
     let mut kps = Vec::new();
     for req in kp_reqs {
+        if let Some(existing) = reuse_kp(&tx, &req.title)? {
+            kps.push(existing);
+            continue;
+        }
         let id = new_id();
         let tags = serde_json::to_string(&req.tags).unwrap_or_default();
         let source_ids = serde_json::to_string(&req.source_ids).unwrap_or_default();
@@ -250,24 +354,44 @@ pub fn persist_research_bundle(
         kps.push(kp);
     }
 
-    let plan_id = new_id();
     let kp_ids: Vec<String> = kps.iter().map(|k| k.id.clone()).collect();
-    let kp_ids_json = serde_json::to_string(&kp_ids).unwrap_or_default();
-    let now = chrono::Utc::now().to_rfc3339();
-    let plan = LearningPlan {
-        id: plan_id.clone(),
-        title: plan_req.title.clone(),
-        goal: plan_req.goal.clone(),
-        kp_ids: kp_ids.clone(),
-        status: "active".to_string(),
-        created_at: now.clone(),
+    let plan = if let Some(mut existing) = reuse_plan(&tx, &plan_req.title)? {
+        let mut merged = existing.kp_ids.clone();
+        for id in &kp_ids {
+            if !merged.contains(id) {
+                merged.push(id.clone());
+            }
+        }
+        if merged != existing.kp_ids {
+            let json = serde_json::to_string(&merged).unwrap_or_default();
+            tx.execute(
+                "UPDATE learning_plans SET kp_ids = ?1 WHERE id = ?2",
+                rusqlite::params![json, existing.id],
+            )
+            .map_err(crate::error::internal)?;
+            existing.kp_ids = merged;
+        }
+        existing
+    } else {
+        let plan_id = new_id();
+        let kp_ids_json = serde_json::to_string(&kp_ids).unwrap_or_default();
+        let now = chrono::Utc::now().to_rfc3339();
+        let plan = LearningPlan {
+            id: plan_id.clone(),
+            title: plan_req.title.clone(),
+            goal: plan_req.goal.clone(),
+            kp_ids: kp_ids.clone(),
+            status: "active".to_string(),
+            created_at: now.clone(),
+        };
+        tx.execute(
+            "INSERT INTO learning_plans (id, title, goal, kp_ids, status, created_at)
+             VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
+            rusqlite::params![plan_id, plan.title, plan.goal, kp_ids_json, now],
+        )
+        .map_err(crate::error::internal)?;
+        plan
     };
-    tx.execute(
-        "INSERT INTO learning_plans (id, title, goal, kp_ids, status, created_at)
-         VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
-        rusqlite::params![plan_id, plan.title, plan.goal, kp_ids_json, now],
-    )
-    .map_err(crate::error::internal)?;
 
     tx.commit().map_err(crate::error::internal)?;
     Ok(crate::models::AiResearchResult {
@@ -275,4 +399,91 @@ pub fn persist_research_bundle(
         knowledge_points: kps,
         plan,
     })
+}
+
+const SOURCE_COLUMNS: &str =
+    "id, title, type, content, tags, origin, source_url, hidden, created_at";
+const KP_COLUMNS: &str = "id, title, summary, content, tags, source_ids, created_at";
+const PLAN_COLUMNS: &str = "id, title, goal, kp_ids, status, created_at";
+
+fn reuse_source(
+    tx: &rusqlite::Transaction<'_>,
+    req: &crate::models::CreateSourceRequest,
+) -> Result<Option<crate::models::Source>, String> {
+    if let Some(url) = req
+        .source_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let mut stmt = tx
+            .prepare(&format!(
+                "SELECT {SOURCE_COLUMNS} FROM sources WHERE source_url = ?1 ORDER BY created_at ASC LIMIT 1"
+            ))
+            .map_err(crate::error::internal)?;
+        let rows = stmt
+            .query_map([url], crate::repo::source::source_from_row)
+            .map_err(crate::error::internal)?;
+        return crate::repo::one(rows);
+    }
+    let title = req.title.trim();
+    if title.is_empty() {
+        return Ok(None);
+    }
+    let mut stmt = tx
+        .prepare(&format!(
+            "SELECT {SOURCE_COLUMNS} FROM sources
+             WHERE origin = ?1 AND lower(title) = lower(?2)
+             ORDER BY created_at ASC LIMIT 1"
+        ))
+        .map_err(crate::error::internal)?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![req.origin, title],
+            crate::repo::source::source_from_row,
+        )
+        .map_err(crate::error::internal)?;
+    crate::repo::one(rows)
+}
+
+fn reuse_kp(
+    tx: &rusqlite::Transaction<'_>,
+    title: &str,
+) -> Result<Option<crate::models::KnowledgePoint>, String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Ok(None);
+    }
+    let mut stmt = tx
+        .prepare(&format!(
+            "SELECT {KP_COLUMNS} FROM knowledge_points
+             WHERE lower(title) = lower(?1)
+             ORDER BY created_at ASC LIMIT 1"
+        ))
+        .map_err(crate::error::internal)?;
+    let rows = stmt
+        .query_map([title], crate::repo::knowledge::kp_from_row)
+        .map_err(crate::error::internal)?;
+    crate::repo::one(rows)
+}
+
+fn reuse_plan(
+    tx: &rusqlite::Transaction<'_>,
+    title: &str,
+) -> Result<Option<LearningPlan>, String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Ok(None);
+    }
+    let mut stmt = tx
+        .prepare(&format!(
+            "SELECT {PLAN_COLUMNS} FROM learning_plans
+             WHERE status = 'active' AND lower(title) = lower(?1)
+             ORDER BY created_at ASC LIMIT 1"
+        ))
+        .map_err(crate::error::internal)?;
+    let rows = stmt
+        .query_map([title], plan_from_row)
+        .map_err(crate::error::internal)?;
+    crate::repo::one(rows)
 }

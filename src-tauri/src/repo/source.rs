@@ -76,7 +76,7 @@ pub fn search_sources(db: &Database, query: &str) -> Result<Vec<Source>, String>
     Ok(sources)
 }
 
-fn source_from_row(row: &rusqlite::Row) -> rusqlite::Result<Source> {
+pub(crate) fn source_from_row(row: &rusqlite::Row) -> rusqlite::Result<Source> {
     let tags_str: String = row.get(4)?;
     Ok(Source {
         id: row.get(0)?,

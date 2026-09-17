@@ -134,7 +134,7 @@ pub fn delete_kp(db: &Database, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn kp_from_row(row: &rusqlite::Row) -> rusqlite::Result<KnowledgePoint> {
+pub(crate) fn kp_from_row(row: &rusqlite::Row) -> rusqlite::Result<KnowledgePoint> {
     let tags_str: String = row.get(4)?;
     let source_ids_str: String = row.get(5)?;
     Ok(KnowledgePoint {
