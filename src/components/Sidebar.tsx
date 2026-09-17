@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import SourceList from "./Sidebar/SourceList";
 import KpList from "./Sidebar/KpList";
-import { usePlatform, getRunMode } from "../utils/tauri";
+import { getPlatformLabel, getRunMode } from "../utils/tauri";
 import { api } from "../api/client";
 import { DATA_CHANGED } from "../utils/events";
 import type { View } from "./Layout";
@@ -17,7 +17,7 @@ interface Props {
 }
 
 export default function Sidebar({ onSelectKp, onOpenSource, selectedKpId, currentView, onNavigate }: Props) {
-  const platform = usePlatform();
+  const platform = getPlatformLabel();
   const runMode = getRunMode();
   const [tab, setTab] = useState<"sources" | "knowledge">("knowledge");
   const [dueCount, setDueCount] = useState<number>(0);

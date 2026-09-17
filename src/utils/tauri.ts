@@ -13,8 +13,9 @@ export function getRunMode(): RunMode {
 }
 
 /**
- * React hook: returns the platform display label ("Desktop" or "Web").
+ * Display label for the current runtime ("Desktop" or "Web").
+ * Not a React Hook — named without a `use` prefix on purpose.
  */
-export function usePlatform(): string {
+export function getPlatformLabel(): string {
   return isTauri() ? "Desktop" : "Web";
 }
