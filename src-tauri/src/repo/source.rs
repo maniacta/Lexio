@@ -50,10 +50,15 @@ pub fn get_source(db: &Database, id: &str) -> Result<Option<Source>, String> {
 
 pub fn toggle_hidden(db: &Database, id: &str, hidden: bool) -> Result<(), String> {
     let conn = db.conn.lock().map_err(crate::error::internal)?;
-    conn.execute(
-        "UPDATE sources SET hidden = ?1 WHERE id = ?2",
-        rusqlite::params![hidden as i32, id],
-    ).map_err(crate::error::internal)?;
+    let updated = conn
+        .execute(
+            "UPDATE sources SET hidden = ?1 WHERE id = ?2",
+            rusqlite::params![hidden as i32, id],
+        )
+        .map_err(crate::error::internal)?;
+    if updated == 0 {
+        return Err("Source not found".into());
+    }
     Ok(())
 }
 
@@ -178,5 +183,12 @@ mod tests {
             crate::error::is_internal(&get_err),
             "a corrupt row must not look missing: {get_err}"
         );
+    }
+
+    #[test]
+    fn toggle_hidden_missing_id_is_not_found() {
+        let db = test_db();
+        let err = toggle_hidden(&db, "no-such-source", true).unwrap_err();
+        assert!(err.contains("not found"), "got: {err}");
     }
 }

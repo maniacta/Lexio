@@ -67,7 +67,15 @@ pub async fn delete_kp(
 ) -> Result<StatusCode, (StatusCode, String)> {
     let audit_id = id.clone();
     let start = std::time::Instant::now();
-    blocking::run(move || repo::knowledge::delete_kp(state.db, &id)).await?;
+    blocking::run(move || repo::knowledge::delete_kp(state.db, &id))
+        .await
+        .map_err(|(code, e)| {
+            if e.contains("not found") {
+                (StatusCode::NOT_FOUND, e)
+            } else {
+                (code, e)
+            }
+        })?;
     let duration_ms = start.elapsed().as_millis() as i64;
     tracing::info!(
         target: "audit",

@@ -481,16 +481,17 @@ pub fn update_model(db: &Database, provider_id: &str, model_id: &str, req: &Upda
 
 pub fn delete_model(db: &Database, provider_id: &str, model_id: &str) -> Result<(), String> {
     let conn = db.conn.lock().map_err(crate::error::internal)?;
-    // Clear task assignments that pointed at this model
-    conn.execute("DELETE FROM task_models WHERE model_id = ?1", [model_id])
-        .map_err(crate::error::internal)?;
+    let is_default: i32 = match conn.query_row(
+        "SELECT is_default FROM provider_models WHERE id = ?1 AND provider_id = ?2",
+        [model_id, provider_id],
+        |r| r.get(0),
+    ) {
+        Ok(v) => v,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Err("Model not found".into()),
+        Err(e) => return Err(crate::error::internal(e)),
+    };
 
-    let is_default: i32 = conn
-        .query_row(
-            "SELECT is_default FROM provider_models WHERE id = ?1 AND provider_id = ?2",
-            [model_id, provider_id],
-            |r| r.get(0),
-        )
+    conn.execute("DELETE FROM task_models WHERE model_id = ?1", [model_id])
         .map_err(crate::error::internal)?;
 
     let deleted = conn
@@ -1014,5 +1015,17 @@ mod tests {
         assert!(keys.contains(&"theme".to_string()));
         let err = set_settings(&db, &[("data_path".into(), "/etc".into())]).unwrap_err();
         assert!(err.contains("未知设置项"), "got: {err}");
+    }
+
+    #[test]
+    fn delete_model_missing_id_is_not_found() {
+        let db = test_db();
+        let (pid, _) = deepseek_flash(&db);
+        let err = delete_model(&db, &pid, "no-such-model").unwrap_err();
+        assert_eq!(err, "Model not found");
+        assert!(
+            !crate::error::is_internal(&err),
+            "missing model must be a user-facing 404, not a 500"
+        );
     }
 }

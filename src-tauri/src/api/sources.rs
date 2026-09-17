@@ -56,6 +56,14 @@ pub async fn toggle_hidden(
     Path(id): Path<String>,
     Json(req): Json<ToggleHiddenRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    blocking::run(move || repo::source::toggle_hidden(state.db, &id, req.hidden)).await?;
+    blocking::run(move || repo::source::toggle_hidden(state.db, &id, req.hidden))
+        .await
+        .map_err(|(code, e)| {
+            if e.contains("not found") {
+                (StatusCode::NOT_FOUND, e)
+            } else {
+                (code, e)
+            }
+        })?;
     Ok(StatusCode::OK)
 }

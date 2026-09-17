@@ -196,7 +196,14 @@ pub async fn delete_model(
     let audit_model = model_id.clone();
     let start = std::time::Instant::now();
     blocking::run_user(move || repo::settings::delete_model(state.db, &provider_id, &model_id))
-        .await?;
+        .await
+        .map_err(|(code, e)| {
+            if e.contains("not found") {
+                (StatusCode::NOT_FOUND, e)
+            } else {
+                (code, e)
+            }
+        })?;
     let duration_ms = start.elapsed().as_millis() as i64;
     tracing::info!(
         target: "audit",

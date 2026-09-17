@@ -87,6 +87,16 @@ pub fn search_kps(db: &Database, query: &str) -> Result<Vec<KnowledgePoint>, Str
 pub fn delete_kp(db: &Database, id: &str) -> Result<(), String> {
     let conn = db.conn.lock().map_err(crate::error::internal)?;
     let tx = conn.unchecked_transaction().map_err(crate::error::internal)?;
+    let exists: i32 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM knowledge_points WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )
+        .map_err(crate::error::internal)?;
+    if exists == 0 {
+        return Err("Knowledge point not found".into());
+    }
     // Cascade related rows (schema FKs have no ON DELETE CASCADE)
     tx.execute(
         "DELETE FROM quiz_attempts WHERE question_id IN (SELECT id FROM quiz_questions WHERE kp_id = ?1)",
@@ -206,5 +216,12 @@ mod tests {
             .unwrap();
         assert!(!plan2.kp_ids.contains(&kp.id));
         assert!(plan2.kp_ids.is_empty());
+    }
+
+    #[test]
+    fn delete_kp_missing_id_is_not_found() {
+        let db = test_db();
+        let err = delete_kp(&db, "no-such-kp").unwrap_err();
+        assert!(err.contains("not found"), "got: {err}");
     }
 }
