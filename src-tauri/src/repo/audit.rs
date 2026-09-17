@@ -83,37 +83,48 @@ pub fn insert(db: &Database, record: &AuditRecord) -> Result<(), String> {
     Ok(())
 }
 
+/// Insert a batch in one transaction.
+///
+/// Without the transaction each `execute` committed on its own, so a failure
+/// partway through (an oversized value, a duplicate id) left the earlier rows
+/// written while the caller saw an error. The caller cannot tell how much
+/// landed, so a retry duplicates those rows and the 500 on `/api/logs/batch`
+/// was misleading about what state the trail was in.
 pub fn batch_insert(db: &Database, records: &[AuditRecord]) -> Result<(), String> {
     if records.is_empty() {
         return Ok(());
     }
-    let conn = db.conn.lock().map_err(crate::error::internal)?;
-    let mut stmt = conn
-        .prepare(
-            "INSERT INTO audit_logs (id, timestamp, source, level, category, action, user_action, method, path, status_code, duration_ms, params_summary, result_summary, error_message, client_timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-        )
-        .map_err(crate::error::internal)?;
-    for record in records {
-        stmt.execute(rusqlite::params![
-            record.id,
-            record.timestamp,
-            record.source,
-            record.level,
-            record.category,
-            record.action,
-            record.user_action,
-            record.method,
-            record.path,
-            record.status_code,
-            record.duration_ms,
-            record.params_summary,
-            record.result_summary,
-            record.error_message,
-            record.client_timestamp,
-        ])
-        .map_err(crate::error::internal)?;
+    let mut conn = db.conn.lock().map_err(crate::error::internal)?;
+    let tx = conn.transaction().map_err(crate::error::internal)?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO audit_logs (id, timestamp, source, level, category, action, user_action, method, path, status_code, duration_ms, params_summary, result_summary, error_message, client_timestamp)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            )
+            .map_err(crate::error::internal)?;
+        for record in records {
+            stmt.execute(rusqlite::params![
+                record.id,
+                record.timestamp,
+                record.source,
+                record.level,
+                record.category,
+                record.action,
+                record.user_action,
+                record.method,
+                record.path,
+                record.status_code,
+                record.duration_ms,
+                record.params_summary,
+                record.result_summary,
+                record.error_message,
+                record.client_timestamp,
+            ])
+            .map_err(crate::error::internal)?;
+        }
     }
+    tx.commit().map_err(crate::error::internal)?;
     Ok(())
 }
 
@@ -390,12 +401,26 @@ mod tests {
         );
     }
 
+    /// A batch is all-or-nothing: a failure partway through must not leave the
+    /// earlier rows behind, or a retry would duplicate them.
     #[test]
-    fn batch_insert_transactional() {
+    fn batch_insert_is_atomic() {
         let db = test_db();
         let batch = vec![rec("b1", 0), rec("b2", 0)];
         batch_insert(&db, &batch).unwrap();
         assert_eq!(list(&db, 10).unwrap().len(), 2);
+
+        // Two records sharing an id: the second INSERT hits the primary key.
+        let dup = rec("dup", 0);
+        let failing = vec![rec("first", 0), dup.clone(), dup];
+        assert!(batch_insert(&db, &failing).is_err());
+
+        let rows = list(&db, 10).unwrap();
+        assert_eq!(rows.len(), 2, "the failed batch must leave no partial rows");
+        assert!(
+            rows.iter().all(|r| r.action != "first"),
+            "the row written before the failure must be rolled back"
+        );
     }
 
     #[test]

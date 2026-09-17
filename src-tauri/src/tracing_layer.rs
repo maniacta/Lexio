@@ -54,7 +54,18 @@ impl AuditDbLayer {
                 };
 
                 if !buffer.is_empty() {
-                    let _ = audit::batch_insert(db, &buffer);
+                    // The buffer is cleared either way (a failed batch is not
+                    // retried), so a failure means these events are lost. Report
+                    // the count rather than dropping them without a trace.
+                    // eprintln, not tracing: emitting an audit event from here
+                    // would feed the layer its own failure.
+                    if let Err(e) = audit::batch_insert(db, &buffer) {
+                        eprintln!(
+                            "AuditDbLayer: dropping {} buffered event(s): {}",
+                            buffer.len(),
+                            crate::error::internal_detail(&e)
+                        );
+                    }
                     buffer.clear();
                 }
 
