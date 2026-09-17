@@ -78,11 +78,6 @@ pub fn init_logging(db: &'static Database, logs_dir: &std::path::Path) -> Result
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
 fn get_api_port(state: tauri::State<'_, ApiState>) -> u16 {
     state.port
 }
@@ -182,7 +177,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, get_api_port, get_api_token])
+        .invoke_handler(tauri::generate_handler![get_api_port, get_api_token])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| crate::startup::exit(format!("无法启动 Lexio：{e}")));
 }

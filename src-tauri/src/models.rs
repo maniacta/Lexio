@@ -163,12 +163,6 @@ pub struct AiResearchResult {
     pub plan: LearningPlan,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiGenerateQuizRequest {
-    pub kp_ids: Vec<String>,
-    pub count: usize,
-}
-
 pub fn new_id() -> String {
     Uuid::new_v4().to_string()
 }
@@ -245,8 +239,6 @@ pub struct SetTaskModelRequest {
 pub struct GeneralSettings {
     pub theme: Option<String>,
     pub language: Option<String>,
-    pub data_path: Option<String>,
-    pub search_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

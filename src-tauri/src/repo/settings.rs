@@ -7,14 +7,25 @@ use crate::models::{
 
 // ── General Settings ──
 
+// ── General Settings ──
+
+/// Keys the general-settings API actually implements. Anything else that
+/// happens to sit in the `settings` table (legacy `data_path` /
+/// `search_enabled`) is ignored so unimplemented knobs cannot be used as a
+/// path-relocation or feature-flag backdoor.
+const GENERAL_SETTING_KEYS: &[&str] = &["theme", "language"];
+
 pub fn get_all_settings(db: &Database) -> Result<Vec<(String, String)>, String> {
     let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn.prepare("SELECT key, value FROM settings")
         .map_err(crate::error::internal)?;
-    let rows = crate::repo::rows(
+    let rows: Vec<(String, String)> = crate::repo::rows(
         stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))),
     )?;
-    Ok(rows)
+    Ok(rows
+        .into_iter()
+        .filter(|(key, _)| GENERAL_SETTING_KEYS.contains(&key.as_str()))
+        .collect())
 }
 
 pub fn get_setting(db: &Database, key: &str) -> Option<String> {
@@ -25,6 +36,9 @@ pub fn get_setting(db: &Database, key: &str) -> Option<String> {
 pub fn set_settings(db: &Database, entries: &[(String, String)]) -> Result<(), String> {
     let conn = db.conn.lock().map_err(crate::error::internal)?;
     for (key, value) in entries {
+        if !GENERAL_SETTING_KEYS.contains(&key.as_str()) {
+            return Err(format!("未知设置项：{key}"));
+        }
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value=?2",
             rusqlite::params![key, value],
@@ -697,14 +711,6 @@ pub fn init_presets(db: &Database) -> Result<(), String> {
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'zh')",
             [],
         ).map_err(crate::error::internal)?;
-        conn.execute(
-            "INSERT OR IGNORE INTO settings (key, value) VALUES ('data_path', '')",
-            [],
-        ).map_err(crate::error::internal)?;
-        conn.execute(
-            "INSERT OR IGNORE INTO settings (key, value) VALUES ('search_enabled', 'false')",
-            [],
-        ).map_err(crate::error::internal)?;
 
         Ok(())
     })();
@@ -986,5 +992,27 @@ mod tests {
         let err = update_model(&db, &pid, "no-such-model", &update("deepseek-v4-flash", None, None))
             .unwrap_err();
         assert_eq!(err, "模型不存在");
+    }
+
+    #[test]
+    fn general_settings_ignore_unimplemented_keys() {
+        let db = test_db();
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('data_path', '/tmp/escape')",
+                [],
+            )
+            .unwrap();
+        }
+        let keys: Vec<_> = get_all_settings(&db)
+            .unwrap()
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+        assert!(!keys.contains(&"data_path".to_string()));
+        assert!(keys.contains(&"theme".to_string()));
+        let err = set_settings(&db, &[("data_path".into(), "/etc".into())]).unwrap_err();
+        assert!(err.contains("未知设置项"), "got: {err}");
     }
 }

@@ -286,12 +286,6 @@ pub async fn update_general(
         if let Some(v) = &req.language {
             entries.push(("language".to_string(), v.clone()));
         }
-        if let Some(v) = &req.data_path {
-            entries.push(("data_path".to_string(), v.clone()));
-        }
-        if let Some(v) = req.search_enabled {
-            entries.push(("search_enabled".to_string(), v.to_string()));
-        }
         repo::settings::set_settings(state.db, &entries)
     })
     .await?;
