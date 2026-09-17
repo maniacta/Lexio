@@ -33,6 +33,8 @@ fn main() {
         // inside the tokio runtime: AuditDbLayer spawns a background task.
         let logs_dir = PathBuf::from("logs");
         lexio_lib::init_logging(db, &logs_dir);
+        // The key was loaded before logging existed; report its provenance now.
+        lexio_lib::crypto::log_master_key_provenance();
         lexio_lib::repo::audit::prune(db, lexio_lib::AUDIT_LOG_RETENTION_DAYS);
 
         let addr = SocketAddr::from(([127, 0, 0, 1], 3001));

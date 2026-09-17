@@ -7,6 +7,7 @@ pub mod learning;
 pub mod ai;
 pub mod crypto;
 pub mod error;
+pub mod key_store;
 pub mod tracing_layer;
 
 use std::net::SocketAddr;
@@ -123,6 +124,8 @@ pub fn run() {
             // ── Initialize tracing subscriber ──
             let logs_dir = app_dir.join("logs");
             crate::init_logging(db, &logs_dir);
+            // The key was loaded before logging existed; report its provenance now.
+            crypto::log_master_key_provenance();
             tracing::info!(target: "audit", source = "backend", category = "system", action = "startup", user_action = "应用启动");
 
             let api_token = crypto::generate_api_token();

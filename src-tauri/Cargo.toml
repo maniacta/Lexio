@@ -41,4 +41,21 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
 
+# OS credential stores are platform-specific and expose different backends, so
+# each target only pulls in the one it needs. Declaring them here (rather than
+# as one cross-platform feature set) keeps a Linux-only backend such as the
+# DBus secret service from being compiled on Windows/macOS.
+#
+# Using keyring 3.x: keyring 4.x has been split into keyring-core plus separate
+# store crates, and there is no established auto-selecting front end yet.
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+# Needs the DBus secret service at runtime (libdbus-1).
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }
+
 

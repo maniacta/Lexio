@@ -1,5 +1,6 @@
 //! At-rest encryption for API keys using AES-256-GCM.
-//! Master key lives next to the DB (machine-local); ciphertext in SQLite.
+//! The master key is held by the OS credential store (see [`crate::key_store`]);
+//! ciphertext lives in SQLite.
 
 use aes_gcm::{
     aead::{Aead, KeyInit},
@@ -18,33 +19,50 @@ fn fill_random(buf: &mut [u8]) -> Result<(), String> {
     getrandom::getrandom(buf).map_err(crate::error::internal)
 }
 
-/// Load or create the 32-byte master key beside the database file.
+/// How the master key was obtained on this run.
+///
+/// Recorded here and emitted to the audit log by
+/// [`log_master_key_provenance`] once the subscriber is installed, because the
+/// key is loaded before logging is initialized.
+static KEY_OUTCOME: std::sync::OnceLock<crate::key_store::KeyOutcome> = std::sync::OnceLock::new();
+
+/// Load or create the 32-byte master key.
+///
+/// Held by the OS credential store when one is available; see
+/// [`crate::key_store`] for the fallback rules.
 pub fn init_master_key(db_path: &str) -> Result<(), String> {
     let key_path = master_key_path(db_path);
-    let key = if key_path.exists() {
-        let bytes = std::fs::read(&key_path).map_err(crate::error::internal)?;
-        if bytes.len() != 32 {
-            return Err("主密钥文件损坏，请删除后重新填写 API Key".into());
-        }
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(&bytes);
-        arr
-    } else {
-        let mut arr = [0u8; 32];
-        fill_random(&mut arr)?;
-        if let Some(parent) = key_path.parent() {
-            std::fs::create_dir_all(parent).map_err(crate::error::internal)?;
-        }
-        std::fs::write(&key_path, arr).map_err(crate::error::internal)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
-        }
-        arr
-    };
+    let (key, outcome) = crate::key_store::load_or_create(&key_path)?;
+    let _ = KEY_OUTCOME.set(outcome);
     let _ = MASTER_KEY.set(key);
     Ok(())
+}
+
+/// Emit how the master key was stored, once the audit subscriber exists.
+///
+/// Silently falling back to a plaintext file is exactly the condition this
+/// change exists to avoid, so it is reported at `warn`; a normal credential
+/// store load is reported at `info`.
+pub fn log_master_key_provenance() {
+    let Some(outcome) = KEY_OUTCOME.get().copied() else {
+        return;
+    };
+    tracing::info!(
+        target: "audit",
+        source = "backend",
+        category = "system",
+        action = "master_key_loaded",
+        result_summary = ?outcome,
+    );
+    if outcome.is_plaintext_file() {
+        tracing::warn!(
+            target: "audit",
+            source = "backend",
+            category = "system",
+            action = "master_key_stored_in_plaintext_file",
+            result_summary = ?outcome,
+        );
+    }
 }
 
 fn master_key_path(db_path: &str) -> PathBuf {
