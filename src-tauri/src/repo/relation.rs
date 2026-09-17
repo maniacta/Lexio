@@ -11,32 +11,32 @@ pub fn create_relation(db: &Database, from_kp_id: &str, to_kp_id: &str, relation
         relation_type: relation_type.to_string(),
         created_at: now.clone(),
     };
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "INSERT INTO relations (id, from_kp_id, to_kp_id, relation_type, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
         rusqlite::params![id, rel.from_kp_id, rel.to_kp_id, rel.relation_type, now],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     Ok(rel)
 }
 
 pub fn get_relations_for_kp(db: &Database, kp_id: &str) -> Result<Vec<Relation>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare("SELECT id, from_kp_id, to_kp_id, relation_type, created_at FROM relations WHERE from_kp_id = ?1 OR to_kp_id = ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let relations: Vec<Relation> = stmt
         .query_map([kp_id], |row| relation_from_row(row))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(relations)
 }
 
 pub fn delete_relation(db: &Database, id: &str) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let n = conn
         .execute("DELETE FROM relations WHERE id = ?1", [id])
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     if n == 0 {
         return Err("Relation not found".into());
     }

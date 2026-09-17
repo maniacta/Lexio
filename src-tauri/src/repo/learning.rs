@@ -15,56 +15,56 @@ pub fn create_plan(db: &Database, req: &CreateLearningPlanRequest) -> Result<Lea
         status: "active".to_string(),
         created_at: now.clone(),
     };
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "INSERT INTO learning_plans (id, title, goal, kp_ids, status, created_at) VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
         rusqlite::params![id, plan.title, plan.goal, kp_ids, now],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     Ok(plan)
 }
 
 pub fn list_plans(db: &Database) -> Result<Vec<LearningPlan>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare("SELECT id, title, goal, kp_ids, status, created_at FROM learning_plans ORDER BY created_at DESC")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let plans: Vec<LearningPlan> = stmt
         .query_map([], |row| plan_from_row(row))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(plans)
 }
 
 pub fn get_plan(db: &Database, id: &str) -> Result<Option<LearningPlan>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare("SELECT id, title, goal, kp_ids, status, created_at FROM learning_plans WHERE id = ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let mut rows = stmt
         .query_map([id], |row| plan_from_row(row))
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
 pub fn upsert_mastery(db: &Database, record: &MasteryRecord) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "INSERT INTO mastery_records (id, kp_id, ease_factor, interval_days, repetitions, next_review_at, last_reviewed_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(kp_id) DO UPDATE SET ease_factor=?3, interval_days=?4, repetitions=?5, next_review_at=?6, last_reviewed_at=?7",
         rusqlite::params![record.id, record.kp_id, record.ease_factor, record.interval_days, record.repetitions, record.next_review_at, record.last_reviewed_at],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     Ok(())
 }
 
 pub fn get_due_reviews(db: &Database) -> Result<Vec<MasteryRecord>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let now = chrono::Utc::now().to_rfc3339();
     let mut stmt = conn
         .prepare("SELECT id, kp_id, ease_factor, interval_days, repetitions, next_review_at, last_reviewed_at FROM mastery_records WHERE next_review_at <= ?1 ORDER BY next_review_at ASC")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let records: Vec<MasteryRecord> = stmt
         .query_map([&now], |row| mastery_from_row(row))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(records)
@@ -102,19 +102,19 @@ mod tests {
 }
 
 pub fn get_mastery_by_kp(db: &Database, kp_id: &str) -> Result<Option<MasteryRecord>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare("SELECT id, kp_id, ease_factor, interval_days, repetitions, next_review_at, last_reviewed_at FROM mastery_records WHERE kp_id = ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let mut rows = stmt
         .query_map([kp_id], |row| mastery_from_row(row))
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
 /// Return due reviews along with the associated KnowledgePoint data.
 pub fn get_due_reviews_with_kp(db: &Database) -> Result<Vec<serde_json::Value>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let now = chrono::Utc::now().to_rfc3339();
     let mut stmt = conn
         .prepare(
@@ -126,7 +126,7 @@ pub fn get_due_reviews_with_kp(db: &Database) -> Result<Vec<serde_json::Value>, 
              WHERE m.next_review_at <= ?1
              ORDER BY m.next_review_at ASC"
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
 
     let items: Vec<serde_json::Value> = stmt
         .query_map([&now], |row| {
@@ -155,7 +155,7 @@ pub fn get_due_reviews_with_kp(db: &Database) -> Result<Vec<serde_json::Value>, 
                 }
             }))
         })
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -195,8 +195,8 @@ pub fn persist_research_bundle(
 ) -> Result<crate::models::AiResearchResult, String> {
     use crate::models::{KnowledgePoint, Source};
 
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
+    let tx = conn.unchecked_transaction().map_err(crate::error::internal)?;
 
     let mut sources = Vec::new();
     for req in source_reqs {
@@ -228,7 +228,7 @@ pub fn persist_research_bundle(
                 now
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
         sources.push(source);
     }
 
@@ -252,7 +252,7 @@ pub fn persist_research_bundle(
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![id, kp.title, kp.summary, kp.content, tags, source_ids, now],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
         kps.push(kp);
     }
 
@@ -273,9 +273,9 @@ pub fn persist_research_bundle(
          VALUES (?1, ?2, ?3, ?4, 'active', ?5)",
         rusqlite::params![plan_id, plan.title, plan.goal, kp_ids_json, now],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
 
-    tx.commit().map_err(|e| e.to_string())?;
+    tx.commit().map_err(crate::error::internal)?;
     Ok(crate::models::AiResearchResult {
         sources,
         knowledge_points: kps,

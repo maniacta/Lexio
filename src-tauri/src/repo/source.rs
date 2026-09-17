@@ -15,54 +15,54 @@ pub fn create_source(db: &Database, req: &CreateSourceRequest) -> Result<Source,
         hidden: false,
         created_at: chrono::Utc::now().to_rfc3339(),
     };
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "INSERT INTO sources (id, title, type, content, tags, origin, source_url, hidden, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8)",
         rusqlite::params![id, source.title, source.source_type, source.content, tags, source.origin, source.source_url, source.created_at],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     Ok(source)
 }
 
 pub fn list_sources(db: &Database, include_hidden: bool) -> Result<Vec<Source>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let query = if include_hidden {
         "SELECT id, title, type, content, tags, origin, source_url, hidden, created_at FROM sources ORDER BY created_at DESC"
     } else {
         "SELECT id, title, type, content, tags, origin, source_url, hidden, created_at FROM sources WHERE hidden = 0 ORDER BY created_at DESC"
     };
-    let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(query).map_err(crate::error::internal)?;
     let sources: Vec<Source> = stmt
         .query_map([], |row| source_from_row(row))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(sources)
 }
 
 pub fn get_source(db: &Database, id: &str) -> Result<Option<Source>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare("SELECT id, title, type, content, tags, origin, source_url, hidden, created_at FROM sources WHERE id = ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let mut rows = stmt
         .query_map([id], |row| source_from_row(row))
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
 pub fn toggle_hidden(db: &Database, id: &str, hidden: bool) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "UPDATE sources SET hidden = ?1 WHERE id = ?2",
         rusqlite::params![hidden as i32, id],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     Ok(())
 }
 
 pub fn search_sources(db: &Database, query: &str) -> Result<Vec<Source>, String> {
     // Escape as an FTS5 phrase; external-content table queried via rowid JOIN.
     let escaped = format!("\"{}\"", query.replace('"', "\"\""));
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare(
             "SELECT s.id, s.title, s.type, s.content, s.tags, s.origin, s.source_url, s.hidden, s.created_at
@@ -70,10 +70,10 @@ pub fn search_sources(db: &Database, query: &str) -> Result<Vec<Source>, String>
              JOIN (SELECT rowid, rank FROM sources_fts WHERE sources_fts MATCH ?1) fts ON s.rowid = fts.rowid
              ORDER BY fts.rank",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let sources: Vec<Source> = stmt
         .query_map([&escaped], |row| source_from_row(row))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(sources)

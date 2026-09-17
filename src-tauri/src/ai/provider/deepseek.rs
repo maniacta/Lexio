@@ -204,7 +204,7 @@ impl LlmProvider for DeepSeekClient {
             .map_err(|e| format!("NETWORK_ERROR: 无法连接 DeepSeek（{}）", e))?;
 
         let status = resp.status();
-        let text = resp.text().await.map_err(|e| format!("Read error: {}", e))?;
+        let text = resp.text().await.map_err(|e| crate::error::internal(format!("read body failed: {e}")))?;
         if !status.is_success() {
             return Err(Self::friendly_http_error(status.as_u16(), &text));
         }

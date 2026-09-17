@@ -6,6 +6,7 @@ pub mod repo;
 pub mod learning;
 pub mod ai;
 pub mod crypto;
+pub mod error;
 pub mod tracing_layer;
 
 use std::net::SocketAddr;

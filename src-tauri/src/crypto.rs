@@ -15,14 +15,14 @@ const NONCE_LEN: usize = 12;
 static MASTER_KEY: OnceLock<[u8; 32]> = OnceLock::new();
 
 fn fill_random(buf: &mut [u8]) -> Result<(), String> {
-    getrandom::getrandom(buf).map_err(|e| format!("随机数生成失败: {e}"))
+    getrandom::getrandom(buf).map_err(crate::error::internal)
 }
 
 /// Load or create the 32-byte master key beside the database file.
 pub fn init_master_key(db_path: &str) -> Result<(), String> {
     let key_path = master_key_path(db_path);
     let key = if key_path.exists() {
-        let bytes = std::fs::read(&key_path).map_err(|e| format!("读取主密钥失败: {e}"))?;
+        let bytes = std::fs::read(&key_path).map_err(crate::error::internal)?;
         if bytes.len() != 32 {
             return Err("主密钥文件损坏，请删除后重新填写 API Key".into());
         }
@@ -33,9 +33,9 @@ pub fn init_master_key(db_path: &str) -> Result<(), String> {
         let mut arr = [0u8; 32];
         fill_random(&mut arr)?;
         if let Some(parent) = key_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(parent).map_err(crate::error::internal)?;
         }
-        std::fs::write(&key_path, arr).map_err(|e| format!("写入主密钥失败: {e}"))?;
+        std::fs::write(&key_path, arr).map_err(crate::error::internal)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -77,7 +77,7 @@ pub fn encrypt_secret(plain: &str) -> Result<String, String> {
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
         .encrypt(nonce, plain.as_bytes())
-        .map_err(|e| format!("加密失败: {e}"))?;
+        .map_err(crate::error::internal)?;
     let mut packed = Vec::with_capacity(NONCE_LEN + ciphertext.len());
     packed.extend_from_slice(&nonce_bytes);
     packed.extend_from_slice(&ciphertext);
@@ -95,7 +95,7 @@ pub fn decrypt_secret(stored: &str) -> Result<String, String> {
     let cipher = cipher()?;
     let raw = B64
         .decode(stored[PREFIX.len()..].as_bytes())
-        .map_err(|e| format!("密文解码失败: {e}"))?;
+        .map_err(crate::error::internal)?;
     if raw.len() <= NONCE_LEN {
         return Err("密文过短".into());
     }

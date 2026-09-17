@@ -61,7 +61,7 @@ Title: {kp_title}\nContent:\n{content}\n\n\
         env.items
     } else {
         serde_json::from_str(json_str.trim())
-            .map_err(|e| format!("Failed to parse quizzes: {}. Raw: {}", e, json_str))?
+            .map_err(|e| crate::error::internal(format!("Failed to parse quizzes: {}. Raw: {}", e, json_str)))?
     };
 
     let questions: Vec<QuizQuestion> = drafts

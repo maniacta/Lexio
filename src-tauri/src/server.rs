@@ -104,20 +104,26 @@ async fn audit_middleware(
     let skip_audit = path == "/api/logs/batch" || path == "/api/health";
 
     // Collect error bodies so details reach the audit log, and sanitize
-    // internal SQL text (e.g. "no such column ... in SELECT") before it
-    // is returned to the client.
+    // internal detail before it is returned to the client. Repositories mark
+    // lower-layer errors with `error::internal`, which is authoritative —
+    // unlike keyword matching, it cannot miss a novel rusqlite message.
     let mut error_message: Option<String> = None;
     if status_code >= 400 && path != "/api/logs/batch" {
         let (parts, body) = response.into_parts();
         let bytes = axum::body::to_bytes(body, 8 * 1024).await.unwrap_or_default();
         let text = String::from_utf8_lossy(&bytes).to_string();
-        if status_code >= 500 && looks_like_internal_error(&text) {
-            response = Response::from_parts(parts, Body::from("服务器内部错误，详情已记录到日志"));
+        if crate::error::is_internal(&text) {
+            // Record the real detail, return a generic message.
+            error_message = Some(crate::error::internal_detail(&text).to_string());
+            response = Response::from_parts(
+                parts,
+                Body::from(crate::error::GENERIC_INTERNAL_MESSAGE),
+            );
         } else {
             response = Response::from_parts(parts, Body::from(bytes));
-        }
-        if !text.trim().is_empty() {
-            error_message = Some(truncate(&text, 500));
+            if !text.trim().is_empty() {
+                error_message = Some(truncate(&text, 500));
+            }
         }
     }
 
@@ -149,15 +155,6 @@ async fn audit_middleware(
     }
 
     response
-}
-
-fn looks_like_internal_error(text: &str) -> bool {
-    let t = text.to_lowercase();
-    t.contains("sqlite")
-        || t.contains("no such column")
-        || t.contains("constraint failed")
-        || t.contains("foreign key")
-        || t.contains("database disk image")
 }
 
 fn truncate(text: &str, max_chars: usize) -> String {

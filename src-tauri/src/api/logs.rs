@@ -1,8 +1,8 @@
+use crate::api::ai_routes::AppState;
+use crate::models::new_id;
+use crate::repo::audit::{self, AuditRecord};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Deserialize;
-use crate::api::ai_routes::AppState;
-use crate::repo::audit::{self, AuditRecord};
-use crate::models::new_id;
 
 /// Maximum number of entries accepted in a single batch.
 const MAX_BATCH_SIZE: usize = 500;
@@ -113,40 +113,55 @@ pub async fn ingest_logs(
     }
 
     let fallback = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let records: Vec<AuditRecord> = req.logs.iter().map(|entry| AuditRecord {
-        id: new_id(),
-        // Per-entry timestamp from the client when present and parseable.
-        timestamp: entry
-            .timestamp
-            .clone()
-            .filter(|t| chrono::DateTime::parse_from_rfc3339(t).is_ok())
-            .unwrap_or_else(|| fallback.clone()),
-        source: "frontend".to_string(),
-        level: entry.level.clone(),
-        category: entry.category.clone(),
-        action: entry.action.clone(),
-        user_action: entry.user_action.clone(),
-        method: None,
-        path: None,
-        status_code: None,
-        duration_ms: entry.duration_ms,
-        params_summary: entry
-            .params_summary
-            .as_ref()
-            .map(|v| truncate(mask_sensitive(v).to_string())),
-        result_summary: entry
-            .result_summary
-            .as_ref()
-            .map(|v| truncate(mask_sensitive(v).to_string())),
-        error_message: entry.error_message.as_ref().map(|s| truncate(s.clone())),
-    }).collect();
+    let records: Vec<AuditRecord> = req
+        .logs
+        .iter()
+        .map(|entry| AuditRecord {
+            id: new_id(),
+            // Per-entry timestamp from the client when present and parseable.
+            timestamp: entry
+                .timestamp
+                .clone()
+                .filter(|t| chrono::DateTime::parse_from_rfc3339(t).is_ok())
+                .unwrap_or_else(|| fallback.clone()),
+            source: "frontend".to_string(),
+            level: entry.level.clone(),
+            category: entry.category.clone(),
+            action: entry.action.clone(),
+            user_action: entry.user_action.clone(),
+            method: None,
+            path: None,
+            status_code: None,
+            duration_ms: entry.duration_ms,
+            params_summary: entry
+                .params_summary
+                .as_ref()
+                .map(|v| truncate(mask_sensitive(v).to_string())),
+            result_summary: entry
+                .result_summary
+                .as_ref()
+                .map(|v| truncate(mask_sensitive(v).to_string())),
+            error_message: entry.error_message.as_ref().map(|s| truncate(s.clone())),
+        })
+        .collect();
 
     match audit::batch_insert(state.db, &records) {
         Ok(()) => (StatusCode::OK, "ok".to_string()),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("failed to store logs: {}", e),
-        ),
+        // This route is skipped by the audit middleware (it would be noise to
+        // log every batch), so the internal detail is hidden here directly.
+        Err(e) => {
+            tracing::warn!(
+                target: "audit",
+                source = "backend",
+                category = "system",
+                action = "log_ingest_failed",
+                error_message = %crate::error::internal_detail(&e),
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                crate::error::GENERIC_INTERNAL_MESSAGE.to_string(),
+            )
+        }
     }
 }
 
@@ -171,14 +186,20 @@ mod tests {
     #[test]
     fn accepts_valid_levels() {
         for lvl in ["info", "warn", "error"] {
-            assert!(validate_entry(&entry(lvl)).is_ok(), "level {lvl} should be valid");
+            assert!(
+                validate_entry(&entry(lvl)).is_ok(),
+                "level {lvl} should be valid"
+            );
         }
     }
 
     #[test]
     fn rejects_unknown_levels() {
         for lvl in ["debug", "trace", "fatal", "INFO", ""] {
-            assert!(validate_entry(&entry(lvl)).is_err(), "level {lvl} should be rejected");
+            assert!(
+                validate_entry(&entry(lvl)).is_err(),
+                "level {lvl} should be rejected"
+            );
         }
     }
 

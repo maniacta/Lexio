@@ -20,7 +20,7 @@ pub struct AuditRecord {
 }
 
 pub fn insert(db: &Database, record: &AuditRecord) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "INSERT INTO audit_logs (id, timestamp, source, level, category, action, user_action, method, path, status_code, duration_ms, params_summary, result_summary, error_message)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
@@ -41,7 +41,7 @@ pub fn insert(db: &Database, record: &AuditRecord) -> Result<(), String> {
             record.error_message,
         ],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     Ok(())
 }
 
@@ -49,13 +49,13 @@ pub fn batch_insert(db: &Database, records: &[AuditRecord]) -> Result<(), String
     if records.is_empty() {
         return Ok(());
     }
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare(
             "INSERT INTO audit_logs (id, timestamp, source, level, category, action, user_action, method, path, status_code, duration_ms, params_summary, result_summary, error_message)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     for record in records {
         stmt.execute(rusqlite::params![
             record.id,
@@ -73,20 +73,20 @@ pub fn batch_insert(db: &Database, records: &[AuditRecord]) -> Result<(), String
             record.result_summary,
             record.error_message,
         ])
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     }
     Ok(())
 }
 
 /// Most recent audit rows, newest first.
 pub fn list(db: &Database, limit: i64) -> Result<Vec<AuditRecord>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare(
             "SELECT id, timestamp, source, level, category, action, user_action, method, path, status_code, duration_ms, params_summary, result_summary, error_message
              FROM audit_logs ORDER BY timestamp DESC LIMIT ?1",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let rows: Vec<AuditRecord> = stmt
         .query_map([limit], |row| {
             Ok(AuditRecord {
@@ -106,7 +106,7 @@ pub fn list(db: &Database, limit: i64) -> Result<Vec<AuditRecord>, String> {
                 error_message: row.get(13)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)

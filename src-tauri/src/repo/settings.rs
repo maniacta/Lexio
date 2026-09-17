@@ -8,12 +8,12 @@ use crate::models::{
 // ── General Settings ──
 
 pub fn get_all_settings(db: &Database) -> Result<Vec<(String, String)>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn.prepare("SELECT key, value FROM settings")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let rows: Vec<(String, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)
@@ -25,12 +25,12 @@ pub fn get_setting(db: &Database, key: &str) -> Option<String> {
 }
 
 pub fn set_settings(db: &Database, entries: &[(String, String)]) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     for (key, value) in entries {
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value=?2",
             rusqlite::params![key, value],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
     }
     Ok(())
 }
@@ -39,10 +39,10 @@ pub fn set_settings(db: &Database, entries: &[(String, String)]) -> Result<(), S
 
 pub fn list_providers(db: &Database) -> Result<Vec<ProviderWithModels>, String> {
     let providers: Vec<ModelProvider> = {
-        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let conn = db.conn.lock().map_err(crate::error::internal)?;
         let mut stmt = conn.prepare(
             "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at FROM model_providers ORDER BY created_at ASC"
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         let result: Vec<ModelProvider> = stmt
             .query_map([], |row| {
                 Ok(ModelProvider {
@@ -53,7 +53,7 @@ pub fn list_providers(db: &Database) -> Result<Vec<ProviderWithModels>, String> 
                     created_at: row.get(7)?,
                 })
             })
-            .map_err(|e| e.to_string())?
+            .map_err(crate::error::internal)?
             .filter_map(|r| r.ok())
             .collect();
         result
@@ -89,10 +89,10 @@ fn mask_api_key(api_key: &str) -> String {
 }
 
 pub fn get_provider(db: &Database, id: &str) -> Result<Option<ModelProvider>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn.prepare(
         "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at FROM model_providers WHERE id = ?1"
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     let mut rows = stmt.query_map([id], |row| {
         Ok(ModelProvider {
             id: row.get(0)?, name: row.get(1)?, base_url: row.get(2)?,
@@ -101,7 +101,7 @@ pub fn get_provider(db: &Database, id: &str) -> Result<Option<ModelProvider>, St
             is_default: row.get::<_, i32>(6)? != 0,
             created_at: row.get(7)?,
         })
-    }).map_err(|e| e.to_string())?;
+    }).map_err(crate::error::internal)?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
@@ -140,7 +140,7 @@ pub fn create_provider_by_kind(
     // Encrypt before taking the DB lock — avoids holding the mutex across crypto I/O.
     let stored_key = crate::crypto::encrypt_secret(api_key)?;
 
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
 
     let exists: i32 = conn
         .query_row(
@@ -148,7 +148,7 @@ pub fn create_provider_by_kind(
             [kind.as_str()],
             |r| r.get(0),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     if exists > 0 {
         return Err(format!("「{}」已存在，请直接编辑现有配置", kind.display_name()));
     }
@@ -157,11 +157,11 @@ pub fn create_provider_by_kind(
     let now = chrono::Utc::now().to_rfc3339();
     let count: i32 = conn
         .query_row("SELECT COUNT(*) FROM model_providers", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let is_default = set_default || count == 0;
     if is_default {
         conn.execute("UPDATE model_providers SET is_default = 0", [])
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
     }
 
     let name = kind.display_name();
@@ -172,7 +172,7 @@ pub fn create_provider_by_kind(
          VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
         rusqlite::params![id, name, url, stored_key, api_format, is_default as i32, now],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
 
     for m in kind.default_models() {
         let mid = new_id();
@@ -188,7 +188,7 @@ pub fn create_provider_by_kind(
                 m.is_default as i32
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     }
 
     Ok(ModelProvider {
@@ -222,10 +222,10 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
         _ => None,
     };
 
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     if req.is_default == Some(true) {
         conn.execute("UPDATE model_providers SET is_default = 0", [])
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
     }
 
     // Kind (api_format) is immutable — only name/url/key/default may change
@@ -234,13 +234,13 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
             "UPDATE model_providers SET base_url=?1, api_key=?2 WHERE id=?3",
             rusqlite::params![url, stored_key, id],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     } else {
         conn.execute(
             "UPDATE model_providers SET base_url=?1 WHERE id=?2",
             rusqlite::params![url, id],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     }
 
     if let Some(ref name) = req.name {
@@ -249,7 +249,7 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
                 "UPDATE model_providers SET name=?1 WHERE id=?2",
                 rusqlite::params![name, id],
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         }
     }
 
@@ -258,24 +258,24 @@ pub fn update_provider(db: &Database, id: &str, req: &UpdateProviderRequest) -> 
             "UPDATE model_providers SET is_default = ?1 WHERE id = ?2",
             rusqlite::params![is_def as i32, id],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     }
     Ok(())
 }
 
 pub fn delete_provider(db: &Database, id: &str) -> Result<(), String> {
     let p = get_provider(db, id)?.ok_or("Provider not found")?;
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
 
     // Clean up task_models referencing models of this provider
     conn.execute(
         "DELETE FROM task_models WHERE model_id IN (SELECT id FROM provider_models WHERE provider_id = ?1)",
         [id],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     conn.execute("DELETE FROM provider_models WHERE provider_id = ?1", [id])
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     conn.execute("DELETE FROM model_providers WHERE id = ?1", [id])
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
 
     // If we removed the default provider, promote another one when any remain
     if p.is_default {
@@ -289,7 +289,7 @@ pub fn delete_provider(db: &Database, id: &str) -> Result<(), String> {
                 "UPDATE model_providers SET is_default = 1 WHERE id = ?1",
                 [&new_default_id],
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         }
     }
     Ok(())
@@ -298,10 +298,10 @@ pub fn delete_provider(db: &Database, id: &str) -> Result<(), String> {
 // ── Provider Models ──
 
 fn list_models_by_provider(db: &Database, provider_id: &str) -> Result<Vec<ProviderModel>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn.prepare(
         "SELECT id, provider_id, model_name, temperature, max_tokens, is_default FROM provider_models WHERE provider_id = ?1 ORDER BY model_name ASC"
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     let models: Vec<ProviderModel> = stmt
         .query_map([provider_id], |row| {
             Ok(ProviderModel {
@@ -310,7 +310,7 @@ fn list_models_by_provider(db: &Database, provider_id: &str) -> Result<Vec<Provi
                 is_default: row.get::<_, i32>(5)? != 0,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(models)
@@ -345,14 +345,14 @@ pub fn create_model(db: &Database, provider_id: &str, req: &CreateModelRequest) 
     let temp = preset.temperature;
     let tokens = preset.max_tokens;
 
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let dup: i32 = conn
         .query_row(
             "SELECT COUNT(*) FROM provider_models WHERE provider_id = ?1 AND model_name = ?2",
             rusqlite::params![provider_id, model_name],
             |r| r.get(0),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     if dup > 0 {
         return Err(format!("模型「{}」已添加", model_name));
     }
@@ -360,17 +360,17 @@ pub fn create_model(db: &Database, provider_id: &str, req: &CreateModelRequest) 
     let id = new_id();
     let is_default = if req.is_default == Some(true) {
         conn.execute("UPDATE provider_models SET is_default = 0 WHERE provider_id = ?1", [provider_id])
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         true
     } else {
         let count: i32 = conn.query_row("SELECT COUNT(*) FROM provider_models WHERE provider_id = ?1", [provider_id], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         count == 0
     };
     conn.execute(
         "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         rusqlite::params![id, provider_id, model_name, temp, tokens, is_default as i32],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     Ok(ProviderModel {
         id,
         provider_id: provider_id.to_string(),
@@ -383,14 +383,14 @@ pub fn create_model(db: &Database, provider_id: &str, req: &CreateModelRequest) 
 
 /// Mark a model as the provider default without touching other fields.
 pub fn set_model_default(db: &Database, provider_id: &str, model_id: &str) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let exists: i32 = conn
         .query_row(
             "SELECT COUNT(*) FROM provider_models WHERE id = ?1 AND provider_id = ?2",
             rusqlite::params![model_id, provider_id],
             |r| r.get(0),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     if exists == 0 {
         return Err("模型不存在".into());
     }
@@ -398,41 +398,41 @@ pub fn set_model_default(db: &Database, provider_id: &str, model_id: &str) -> Re
         "UPDATE provider_models SET is_default = 0 WHERE provider_id = ?1",
         [provider_id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     conn.execute(
         "UPDATE provider_models SET is_default = 1 WHERE id = ?1 AND provider_id = ?2",
         rusqlite::params![model_id, provider_id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     Ok(())
 }
 
 pub fn update_model(db: &Database, provider_id: &str, model_id: &str, req: &UpdateModelRequest) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let temp = req.temperature.unwrap_or(0.7);
     let tokens = req.max_tokens.unwrap_or(4096);
     if req.is_default == Some(true) {
         conn.execute("UPDATE provider_models SET is_default = 0 WHERE provider_id = ?1", [provider_id])
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
     }
     conn.execute(
         "UPDATE provider_models SET model_name=?1, temperature=?2, max_tokens=?3 WHERE id=?4 AND provider_id=?5",
         rusqlite::params![req.model_name, temp, tokens, model_id, provider_id],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     if let Some(is_def) = req.is_default {
         conn.execute(
             "UPDATE provider_models SET is_default = ?1 WHERE id = ?2 AND provider_id = ?3",
             rusqlite::params![is_def as i32, model_id, provider_id],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
     }
     Ok(())
 }
 
 pub fn delete_model(db: &Database, provider_id: &str, model_id: &str) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     // Clear task assignments that pointed at this model
     conn.execute("DELETE FROM task_models WHERE model_id = ?1", [model_id])
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
 
     let is_default: i32 = conn
         .query_row(
@@ -440,14 +440,14 @@ pub fn delete_model(db: &Database, provider_id: &str, model_id: &str) -> Result<
             [model_id, provider_id],
             |r| r.get(0),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
 
     let deleted = conn
         .execute(
             "DELETE FROM provider_models WHERE id = ?1 AND provider_id = ?2",
             [model_id, provider_id],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     if deleted == 0 {
         return Err("Model not found".to_string());
     }
@@ -463,20 +463,20 @@ pub fn delete_model(db: &Database, provider_id: &str, model_id: &str) -> Result<
                 "UPDATE provider_models SET is_default = 1 WHERE id = ?1 AND provider_id = ?2",
                 rusqlite::params![next_id, provider_id],
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         }
     }
     Ok(())
 }
 
 pub fn get_model_full(db: &Database, model_id: &str) -> Result<Option<(ModelProvider, ProviderModel)>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn.prepare(
         "SELECT pm.id, pm.provider_id, pm.model_name, pm.temperature, pm.max_tokens, pm.is_default,
                 mp.id, mp.name, mp.base_url, mp.api_key, mp.api_format, mp.is_preset, mp.is_default, mp.created_at
          FROM provider_models pm JOIN model_providers mp ON pm.provider_id = mp.id
          WHERE pm.id = ?1"
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     let mut rows = stmt.query_map([model_id], |row| {
         Ok((
             ModelProvider {
@@ -492,35 +492,35 @@ pub fn get_model_full(db: &Database, model_id: &str) -> Result<Option<(ModelProv
                 is_default: row.get::<_, i32>(5)? != 0,
             },
         ))
-    }).map_err(|e| e.to_string())?;
+    }).map_err(crate::error::internal)?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
 // ── Task Models ──
 
 pub fn get_task_models(db: &Database) -> Result<Vec<TaskModelMapping>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn.prepare(
         "SELECT task_name, model_id FROM task_models ORDER BY task_name ASC"
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     let tasks: Vec<TaskModelMapping> = stmt
         .query_map([], |row| {
             Ok(TaskModelMapping { task_name: row.get(0)?, model_id: row.get(1)? })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(tasks)
 }
 
 pub fn set_task_model(db: &Database, task_name: &str, req: &SetTaskModelRequest) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let id = new_id();
     conn.execute(
         "INSERT INTO task_models (id, task_name, model_id) VALUES (?1, ?2, ?3)
          ON CONFLICT(task_name) DO UPDATE SET model_id=?3",
         rusqlite::params![id, task_name, req.model_id],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     Ok(())
 }
 
@@ -529,7 +529,7 @@ pub fn set_task_model(db: &Database, task_name: &str, req: &SetTaskModelRequest)
 pub fn resolve_llm_config(db: &Database, task_name: &str) -> Result<crate::ai::LlmConfig, String> {
     // Try task-specific model
     let model_id: Option<String> = {
-        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let conn = db.conn.lock().map_err(crate::error::internal)?;
         conn.query_row(
             "SELECT model_id FROM task_models WHERE task_name = ?1", [task_name], |row| row.get(0)
         ).ok().flatten()
@@ -564,13 +564,13 @@ pub fn resolve_llm_config(db: &Database, task_name: &str) -> Result<crate::ai::L
 }
 
 fn get_default_model(db: &Database) -> Result<(ModelProvider, ProviderModel), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     // Get default provider
     let provider = {
         let mut stmt = conn.prepare(
             "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at
              FROM model_providers WHERE is_default = 1 ORDER BY created_at ASC LIMIT 1"
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         let mut rows = stmt.query_map([], |row| {
             Ok(ModelProvider {
                 id: row.get(0)?, name: row.get(1)?, base_url: row.get(2)?,
@@ -579,23 +579,23 @@ fn get_default_model(db: &Database) -> Result<(ModelProvider, ProviderModel), St
                 is_default: row.get::<_, i32>(6)? != 0,
                 created_at: row.get(7)?,
             })
-        }).map_err(|e| e.to_string())?;
-        rows.next().ok_or("No default provider configured".to_string())?.map_err(|e| e.to_string())?
+        }).map_err(crate::error::internal)?;
+        rows.next().ok_or("No default provider configured".to_string())?.map_err(crate::error::internal)?
     };
 
     // Get default model for that provider
     let mut stmt = conn.prepare(
         "SELECT id, provider_id, model_name, temperature, max_tokens, is_default
          FROM provider_models WHERE provider_id = ?1 AND is_default = 1 LIMIT 1"
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     let mut rows = stmt.query_map([&provider.id], |row| {
         Ok(ProviderModel {
             id: row.get(0)?, provider_id: row.get(1)?, model_name: row.get(2)?,
             temperature: row.get(3)?, max_tokens: row.get(4)?,
             is_default: row.get::<_, i32>(5)? != 0,
         })
-    }).map_err(|e| e.to_string())?;
-    let model = rows.next().ok_or("No default model found for the default provider".to_string())?.map_err(|e| e.to_string())?;
+    }).map_err(crate::error::internal)?;
+    let model = rows.next().ok_or("No default model found for the default provider".to_string())?.map_err(crate::error::internal)?;
 
     Ok((provider, model))
 }
@@ -603,81 +603,81 @@ fn get_default_model(db: &Database) -> Result<(ModelProvider, ProviderModel), St
 // ── Preset Initialization (idempotent) ──
 
 pub fn init_presets(db: &Database) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let count: i32 = conn.query_row("SELECT COUNT(*) FROM model_providers", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     if count > 0 {
         return Ok(());
     }
 
-    conn.execute("BEGIN", []).map_err(|e| e.to_string())?;
+    conn.execute("BEGIN", []).map_err(crate::error::internal)?;
     let result = (|| -> Result<(), String> {
         // DeepSeek
         let ds_id = new_id();
         conn.execute(
             "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'DeepSeek', 'https://api.deepseek.com', '', 'deepseek', 1, 1)",
             rusqlite::params![ds_id],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         let ds_flash_id = new_id();
         conn.execute(
             "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'deepseek-v4-flash', 0.7, 4096, 1)",
             rusqlite::params![ds_flash_id, ds_id],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         let ds_pro_id = new_id();
         conn.execute(
             "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'deepseek-v4-pro', 0.7, 8192, 0)",
             rusqlite::params![ds_pro_id, ds_id],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
 
         // OpenAI
         let oai_id = new_id();
         conn.execute(
             "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'OpenAI', 'https://api.openai.com/v1', '', 'openai', 1, 0)",
             rusqlite::params![oai_id],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         let oai_model_id = new_id();
         conn.execute(
             "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'gpt-4o', 0.7, 4096, 1)",
             rusqlite::params![oai_model_id, oai_id],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
 
         // Anthropic
         let anth_id = new_id();
         conn.execute(
             "INSERT INTO model_providers (id, name, base_url, api_key, api_format, is_preset, is_default) VALUES (?1, 'Anthropic', 'https://api.anthropic.com', '', 'anthropic', 1, 0)",
             rusqlite::params![anth_id],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         let anth_model_id = new_id();
         conn.execute(
             "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default) VALUES (?1, ?2, 'claude-sonnet-4-20250514', 0.7, 4096, 1)",
             rusqlite::params![anth_model_id, anth_id],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
 
         // Default general settings (ignore if already present)
         conn.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'system')",
             [],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         conn.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'zh')",
             [],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         conn.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('data_path', '')",
             [],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
         conn.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('search_enabled', 'false')",
             [],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(crate::error::internal)?;
 
         Ok(())
     })();
 
     if result.is_ok() {
-        conn.execute("COMMIT", []).map_err(|e| e.to_string())?;
+        conn.execute("COMMIT", []).map_err(crate::error::internal)?;
     } else {
-        conn.execute("ROLLBACK", []).map_err(|e| e.to_string())?;
+        conn.execute("ROLLBACK", []).map_err(crate::error::internal)?;
     }
     result
 }
@@ -687,15 +687,15 @@ pub fn init_presets(db: &Database) -> Result<(), String> {
 /// Encrypt any plaintext API keys left in the DB (idempotent).
 pub fn migrate_encrypt_api_keys(db: &Database) -> Result<(), String> {
     let rows: Vec<(String, String)> = {
-        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let conn = db.conn.lock().map_err(crate::error::internal)?;
         let mut stmt = conn
             .prepare("SELECT id, api_key FROM model_providers")
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         let mapped: Result<Vec<_>, _> = stmt
             .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
-            .map_err(|e| e.to_string())?
+            .map_err(crate::error::internal)?
             .collect();
-        mapped.map_err(|e| e.to_string())?
+        mapped.map_err(crate::error::internal)?
     };
 
     for (id, key) in rows {
@@ -703,18 +703,18 @@ pub fn migrate_encrypt_api_keys(db: &Database) -> Result<(), String> {
             continue;
         }
         let enc = crate::crypto::encrypt_secret(&key)?;
-        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let conn = db.conn.lock().map_err(crate::error::internal)?;
         conn.execute(
             "UPDATE model_providers SET api_key = ?1 WHERE id = ?2",
             rusqlite::params![enc, id],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     }
     Ok(())
 }
 
 pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
 
     // Normalize DeepSeek provider base URL + format
     conn.execute(
@@ -724,7 +724,7 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
             OR lower(base_url) LIKE '%deepseek.com%'",
         [],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
 
     // Normalize legacy openai_compatible → openai / anthropic
     conn.execute(
@@ -733,20 +733,20 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
            AND (lower(name) LIKE '%openai%' OR lower(base_url) LIKE '%openai.com%')",
         [],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     conn.execute(
         "UPDATE model_providers SET api_format = 'anthropic'
          WHERE (api_format = 'openai_compatible' OR api_format = 'openai')
            AND (lower(name) LIKE '%anthropic%' OR lower(base_url) LIKE '%anthropic.com%')",
         [],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     conn.execute(
         "UPDATE model_providers SET api_format = 'openai'
          WHERE api_format = 'openai_compatible'",
         [],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
 
     // Retired aliases → current model IDs
     conn.execute(
@@ -754,13 +754,13 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
          WHERE model_name IN ('deepseek-chat', 'deepseek-v3', 'deepseek-v3.1', 'deepseek-v3.2')",
         [],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     conn.execute(
         "UPDATE provider_models SET model_name = 'deepseek-v4-pro'
          WHERE model_name IN ('deepseek-reasoner', 'deepseek-r1')",
         [],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
 
     // Ensure DeepSeek providers have both flash (default) and pro models
     let mut stmt = conn
@@ -768,10 +768,10 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
             "SELECT id FROM model_providers
              WHERE lower(name) = 'deepseek' OR lower(base_url) LIKE '%deepseek.com%'",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let provider_ids: Vec<String> = stmt
         .query_map([], |row| row.get(0))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     drop(stmt);
@@ -783,7 +783,7 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
                 [&provider_id],
                 |r| r.get(0),
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         if has_flash == 0 {
             let id = new_id();
             let has_any: i32 = conn
@@ -792,13 +792,13 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
                     [&provider_id],
                     |r| r.get(0),
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(crate::error::internal)?;
             conn.execute(
                 "INSERT INTO provider_models (id, provider_id, model_name, temperature, max_tokens, is_default)
                  VALUES (?1, ?2, 'deepseek-v4-flash', 0.7, 4096, ?3)",
                 rusqlite::params![id, provider_id, if has_any == 0 { 1 } else { 0 }],
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         }
 
         let has_pro: i32 = conn
@@ -807,7 +807,7 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
                 [&provider_id],
                 |r| r.get(0),
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         if has_pro == 0 {
             let id = new_id();
             conn.execute(
@@ -815,7 +815,7 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
                  VALUES (?1, ?2, 'deepseek-v4-pro', 0.7, 8192, 0)",
                 rusqlite::params![id, provider_id],
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         }
     }
 
@@ -823,14 +823,14 @@ pub fn migrate_deepseek_models(db: &Database) -> Result<(), String> {
 }
 
 pub fn resolve_for_test(db: &Database, provider_id: &str, model_name: &str) -> Result<crate::ai::LlmConfig, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
 
     // Validate that model_name exists for this provider
     let model_exists: bool = conn.query_row(
         "SELECT COUNT(*) > 0 FROM provider_models WHERE provider_id = ?1 AND model_name = ?2",
         rusqlite::params![provider_id, model_name],
         |row| row.get(0),
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     if !model_exists {
         return Err(format!("Model '{}' not found for provider '{}'", model_name, provider_id));
     }
@@ -839,7 +839,7 @@ pub fn resolve_for_test(db: &Database, provider_id: &str, model_name: &str) -> R
         "SELECT base_url, api_key, api_format FROM model_providers WHERE id = ?1",
         [provider_id],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
 
     if api_key.trim().is_empty() {
         return Err("MISSING_API_KEY: 请先填写 API Key".into());

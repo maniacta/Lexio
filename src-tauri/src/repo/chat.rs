@@ -66,7 +66,7 @@ impl ChatMessage {
 }
 
 pub fn list_sessions(db: &Database) -> Result<Vec<ChatSession>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare(
             "SELECT s.id, s.title, s.plan_id, s.updated_at, COUNT(m.id) as message_count
@@ -75,7 +75,7 @@ pub fn list_sessions(db: &Database) -> Result<Vec<ChatSession>, String> {
              GROUP BY s.id
              ORDER BY s.updated_at DESC",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let sessions: Vec<ChatSession> = stmt
         .query_map([], |row| {
             Ok(ChatSession {
@@ -86,21 +86,21 @@ pub fn list_sessions(db: &Database) -> Result<Vec<ChatSession>, String> {
                 message_count: row.get(4)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(sessions)
 }
 
 pub fn create_session(db: &Database, title: &str) -> Result<ChatSession, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let id = new_id();
     conn.execute(
         "INSERT INTO chat_sessions (id, title, plan_id, created_at, updated_at) VALUES (?1, ?2, NULL, ?3, ?3)",
         rusqlite::params![id, title, now],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     Ok(ChatSession {
         id,
         title: title.to_string(),
@@ -111,13 +111,13 @@ pub fn create_session(db: &Database, title: &str) -> Result<ChatSession, String>
 }
 
 pub fn get_messages(db: &Database, session_id: &str) -> Result<Vec<ChatMessage>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare(
             "SELECT id, session_id, role, content, actions, context, created_at
              FROM chat_messages WHERE session_id = ?1 ORDER BY created_at ASC, rowid ASC",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let messages: Vec<ChatMessage> = stmt
         .query_map([session_id], |row| {
             Ok(ChatMessage {
@@ -130,7 +130,7 @@ pub fn get_messages(db: &Database, session_id: &str) -> Result<Vec<ChatMessage>,
                 created_at: row.get(6)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(messages)
@@ -144,7 +144,7 @@ pub fn append_message(
     actions: Option<&str>,
     context: Option<&str>,
 ) -> Result<ChatMessage, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let id = new_id();
     conn.execute(
@@ -152,12 +152,12 @@ pub fn append_message(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![id, session_id, role, content, actions, context, now],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     conn.execute(
         "UPDATE chat_sessions SET updated_at = ?1 WHERE id = ?2",
         rusqlite::params![now, session_id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     Ok(ChatMessage {
         id,
         session_id: session_id.to_string(),
@@ -170,39 +170,39 @@ pub fn append_message(
 }
 
 pub fn delete_session(db: &Database, session_id: &str) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
+    let tx = conn.unchecked_transaction().map_err(crate::error::internal)?;
     tx.execute(
         "DELETE FROM chat_messages WHERE session_id = ?1",
         rusqlite::params![session_id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     tx.execute(
         "DELETE FROM chat_sessions WHERE id = ?1",
         rusqlite::params![session_id],
     )
-    .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
+    tx.commit().map_err(crate::error::internal)?;
     Ok(())
 }
 
 pub fn set_session_title(db: &Database, session_id: &str, title: &str) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "UPDATE chat_sessions SET title = ?1 WHERE id = ?2",
         rusqlite::params![title, session_id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     Ok(())
 }
 
 pub fn set_session_plan(db: &Database, session_id: &str, plan_id: &str) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "UPDATE chat_sessions SET plan_id = ?1 WHERE id = ?2",
         rusqlite::params![plan_id, session_id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     Ok(())
 }
 

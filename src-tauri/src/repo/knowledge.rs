@@ -15,35 +15,35 @@ pub fn create_kp(db: &Database, req: &CreateKnowledgePointRequest) -> Result<Kno
         source_ids: req.source_ids.clone(),
         created_at: now.clone(),
     };
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     conn.execute(
         "INSERT INTO knowledge_points (id, title, summary, content, tags, source_ids, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![id, kp.title, kp.summary, kp.content, tags, source_ids, now],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(crate::error::internal)?;
     Ok(kp)
 }
 
 pub fn list_kps(db: &Database) -> Result<Vec<KnowledgePoint>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare("SELECT id, title, summary, content, tags, source_ids, created_at FROM knowledge_points ORDER BY created_at DESC")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let kps: Vec<KnowledgePoint> = stmt
         .query_map([], |row| kp_from_row(row))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(kps)
 }
 
 pub fn get_kp(db: &Database, id: &str) -> Result<Option<KnowledgePoint>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare("SELECT id, title, summary, content, tags, source_ids, created_at FROM knowledge_points WHERE id = ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let mut rows = stmt
         .query_map([id], |row| kp_from_row(row))
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
@@ -51,17 +51,17 @@ pub fn list_kps_by_ids(db: &Database, ids: &[String]) -> Result<Vec<KnowledgePoi
     if ids.is_empty() {
         return Ok(vec![]);
     }
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let placeholders: Vec<String> = ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
     let sql = format!(
         "SELECT id, title, summary, content, tags, source_ids, created_at FROM knowledge_points WHERE id IN ({})",
         placeholders.join(",")
     );
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&sql).map_err(crate::error::internal)?;
     let params: Vec<&dyn rusqlite::types::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
     let kps: Vec<KnowledgePoint> = stmt
         .query_map(params.as_slice(), |row| kp_from_row(row))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(kps)
@@ -73,7 +73,7 @@ pub fn search_kps(db: &Database, query: &str) -> Result<Vec<KnowledgePoint>, Str
     // into a query syntax error. The external-content FTS table is queried
     // via rowid JOIN against the base table.
     let escaped = format!("\"{}\"", query.replace('"', "\"\""));
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn
         .prepare(
             "SELECT kp.id, kp.title, kp.summary, kp.content, kp.tags, kp.source_ids, kp.created_at
@@ -81,42 +81,42 @@ pub fn search_kps(db: &Database, query: &str) -> Result<Vec<KnowledgePoint>, Str
              JOIN (SELECT rowid, rank FROM kp_fts WHERE kp_fts MATCH ?1) fts ON kp.rowid = fts.rowid
              ORDER BY fts.rank",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     let kps: Vec<KnowledgePoint> = stmt
         .query_map([&escaped], |row| kp_from_row(row))
-        .map_err(|e| e.to_string())?
+        .map_err(crate::error::internal)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(kps)
 }
 
 pub fn delete_kp(db: &Database, id: &str) -> Result<(), String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
+    let tx = conn.unchecked_transaction().map_err(crate::error::internal)?;
     // Cascade related rows (schema FKs have no ON DELETE CASCADE)
     tx.execute(
         "DELETE FROM quiz_attempts WHERE question_id IN (SELECT id FROM quiz_questions WHERE kp_id = ?1)",
         [id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
     tx.execute("DELETE FROM quiz_questions WHERE kp_id = ?1", [id])
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     tx.execute("DELETE FROM mastery_records WHERE kp_id = ?1", [id])
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     tx.execute(
         "DELETE FROM relations WHERE from_kp_id = ?1 OR to_kp_id = ?1",
         [id],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(crate::error::internal)?;
 
     // Remove the deleted KP id from every plan's kp_ids JSON array.
     {
         let mut stmt = tx
             .prepare("SELECT id, kp_ids FROM learning_plans")
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::error::internal)?;
         let plans: Vec<(String, String)> = stmt
             .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
-            .map_err(|e| e.to_string())?
+            .map_err(crate::error::internal)?
             .filter_map(|r| r.ok())
             .collect();
         for (plan_id, kp_ids_str) in plans {
@@ -131,14 +131,14 @@ pub fn delete_kp(db: &Database, id: &str) -> Result<(), String> {
                         plan_id
                     ],
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(crate::error::internal)?;
             }
         }
     }
 
     tx.execute("DELETE FROM knowledge_points WHERE id = ?1", [id])
-        .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
+    tx.commit().map_err(crate::error::internal)?;
     Ok(())
 }
 

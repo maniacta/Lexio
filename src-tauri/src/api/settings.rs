@@ -60,7 +60,7 @@ pub async fn get_settings(
 }
 
 fn resolve_default_display(db: &crate::db::Database) -> Result<String, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
     let (p_name, m_name): (String, String) = conn
         .query_row(
             "SELECT mp.name, pm.model_name FROM model_providers mp
@@ -70,7 +70,7 @@ fn resolve_default_display(db: &crate::db::Database) -> Result<String, String> {
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::error::internal)?;
     Ok(format!("{} / {}", p_name, m_name))
 }
 

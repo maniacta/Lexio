@@ -41,11 +41,11 @@ pub async fn propose_sources(config: LlmConfig, topic: &str) -> Result<Vec<Sourc
         return Ok(env.items);
     }
     serde_json::from_str(json_str.trim()).map_err(|e| {
-        format!(
+        crate::error::internal(format!(
             "Failed to parse sources: {}. Raw: {}",
             e,
             json_str.chars().take(200).collect::<String>()
-        )
+        ))
     })
 }
 
@@ -73,5 +73,5 @@ pub async fn extract_knowledge_points(
     }
 
     serde_json::from_str(json_str.trim())
-        .map_err(|e| format!("Failed to parse knowledge points: {}. Raw: {}", e, json_str))
+        .map_err(|e| crate::error::internal(format!("Failed to parse knowledge points: {}. Raw: {}", e, json_str)))
 }
