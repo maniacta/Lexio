@@ -1950,7 +1950,6 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "chrono",
- "futures-util",
  "getrandom 0.2.17",
  "http",
  "keyring",
@@ -1960,9 +1959,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
- "thiserror 1.0.69",
  "tokio",
- "tokio-stream",
  "tower-http",
  "tracing",
  "tracing-appender",
@@ -2891,7 +2888,6 @@ dependencies = [
  "bytes",
  "encoding_rs",
  "futures-core",
- "futures-util",
  "h2",
  "http",
  "http-body",
@@ -2913,14 +2909,12 @@ dependencies = [
  "sync_wrapper",
  "tokio",
  "tokio-native-tls",
- "tokio-util",
  "tower",
  "tower-http",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams 0.4.2",
  "web-sys",
 ]
 
@@ -2954,7 +2948,7 @@ dependencies = [
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams 0.5.0",
+ "wasm-streams",
  "web-sys",
 ]
 
@@ -3405,16 +3399,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "signal-hook-registry"
-version = "1.4.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
-dependencies = [
- "errno",
- "libc",
-]
 
 [[package]]
 name = "simd-adler32"
@@ -4038,9 +4022,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
- "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
@@ -4074,17 +4056,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
- "tokio",
-]
-
-[[package]]
-name = "tokio-stream"
-version = "0.1.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32da49809aab5c3bc678af03902d4ccddea2a87d028d86392a4b1560c6906c70"
-dependencies = [
- "futures-core",
- "pin-project-lite",
  "tokio",
 ]
 
@@ -4681,19 +4652,6 @@ dependencies = [
  "indexmap 2.14.0",
  "wasm-encoder",
  "wasmparser",
-]
-
-[[package]]
-name = "wasm-streams"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
-dependencies = [
- "futures-util",
- "js-sys",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
