@@ -34,7 +34,10 @@ fn main() {
         lexio_lib::startup::exit(format!("无法加密已保存的 API Key：{e}"));
     }
 
-    let api_token = lexio_lib::crypto::generate_api_token();
+    let api_token = match lexio_lib::crypto::generate_api_token() {
+        Ok(token) => token,
+        Err(e) => lexio_lib::startup::exit(format!("无法生成 API Token：{e}")),
+    };
     let app_state: &'static lexio_lib::api::ai_routes::AppState =
         Box::leak(Box::new(lexio_lib::api::ai_routes::AppState {
             db,

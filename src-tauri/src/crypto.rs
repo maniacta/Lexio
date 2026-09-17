@@ -129,8 +129,26 @@ pub fn is_encrypted(stored: &str) -> bool {
     stored.starts_with(PREFIX)
 }
 
-pub fn generate_api_token() -> String {
+pub fn generate_api_token() -> Result<String, String> {
     let mut bytes = [0u8; 32];
-    let _ = fill_random(&mut bytes);
-    B64.encode(bytes)
+    fill_random(&mut bytes)?;
+    Ok(B64.encode(bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_api_token_is_32_random_bytes() {
+        let token = generate_api_token().expect("rng");
+        let raw = B64.decode(token.as_bytes()).expect("base64");
+        assert_eq!(raw.len(), 32);
+        assert!(
+            raw.iter().any(|&b| b != 0),
+            "token must not be the all-zero fallback that used to leak on rng failure"
+        );
+        let other = generate_api_token().expect("rng");
+        assert_ne!(token, other);
+    }
 }

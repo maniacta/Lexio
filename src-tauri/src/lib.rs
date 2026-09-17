@@ -145,7 +145,8 @@ pub fn run() {
             crypto::log_master_key_provenance();
             tracing::info!(target: "audit", source = "backend", category = "system", action = "startup", user_action = "应用启动");
 
-            let api_token = crypto::generate_api_token();
+            let api_token = crypto::generate_api_token()
+                .map_err(|e| crate::startup::fail(format!("无法生成 API Token：{e}")))?;
             let (std_listener, port) = crate::listen::bind_loopback_std(crate::listen::API_PORT)
                 .map_err(crate::startup::fail)?;
             app_handle.manage(ApiState {
