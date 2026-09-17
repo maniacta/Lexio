@@ -207,6 +207,7 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
         loading={loading}
         onSubmit={submitAnswer}
         onNext={nextQuestion}
+        onComplete={nextQuestion}
         isLast={index === kpIds.length - 1}
       />
     </div>

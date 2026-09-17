@@ -150,14 +150,15 @@ export default function LearningView({ kpId, autoStartQuiz }: Props) {
             <h3>测验</h3>
             {quiz.loading && !quiz.currentQuestion && <p>加载题目中...</p>}
             {quiz.error && <p className="quiz-error">{quiz.error}</p>}
-            {quiz.currentQuestion && (
+            {quiz.currentQuestion && !quiz.isFinished && (
               <QuizCard
                 question={quiz.currentQuestion}
                 result={quiz.result}
                 loading={quiz.loading}
                 onSubmit={quiz.submitAnswer}
                 onNext={quiz.nextQuestion}
-                isLast={quiz.isFinished}
+                onComplete={quiz.finishQuiz}
+                isLast={quiz.isLast}
               />
             )}
             {quiz.isFinished && (

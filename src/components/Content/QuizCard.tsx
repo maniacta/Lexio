@@ -8,10 +8,11 @@ interface Props {
   loading: boolean;
   onSubmit: (answer: string) => void;
   onNext: () => void;
+  onComplete: () => void;
   isLast: boolean;
 }
 
-export default function QuizCard({ question, result, loading, onSubmit, onNext, isLast }: Props) {
+export default function QuizCard({ question, result, loading, onSubmit, onNext, onComplete, isLast }: Props) {
   const [selected, setSelected] = useState("");
   const [textAnswer, setTextAnswer] = useState("");
 
@@ -82,7 +83,7 @@ export default function QuizCard({ question, result, loading, onSubmit, onNext, 
           {result.correct_answer && !result.is_correct && (
             <div className="quiz-result-explanation">正确答案：{result.correct_answer}</div>
           )}
-          <button className="quiz-next-btn" onClick={onNext}>
+          <button className="quiz-next-btn" onClick={isLast ? onComplete : onNext}>
             {isLast ? "完成复习" : "下一题"}
           </button>
         </div>

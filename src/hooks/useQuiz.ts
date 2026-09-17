@@ -4,12 +4,19 @@ import { api } from "../api/client";
 import { formatApiError, isAbortError } from "../utils/errors";
 import { notifyDataChanged } from "../utils/events";
 
+/** Advance to the next index, or signal that the last card should complete. */
+export function quizStep(currentIndex: number, questionCount: number): number | "complete" {
+  if (questionCount <= 0 || currentIndex >= questionCount - 1) return "complete";
+  return currentIndex + 1;
+}
+
 export function useQuiz(kpId: string | null) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -35,6 +42,7 @@ export function useQuiz(kpId: string | null) {
       setQuestions(qs);
       setCurrentIndex(0);
       setResult(null);
+      setFinished(false);
     } catch (err) {
       if (isAbortError(err)) return;
       setError(formatApiError(err));
@@ -67,14 +75,20 @@ export function useQuiz(kpId: string | null) {
   }, [questions, currentIndex]);
 
   const nextQuestion = useCallback(() => {
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex((i) => i + 1);
-      setResult(null);
-    }
+    const step = quizStep(currentIndex, questions.length);
+    if (step === "complete") return;
+    setCurrentIndex(step);
+    setResult(null);
   }, [currentIndex, questions.length]);
 
+  const finishQuiz = useCallback(() => {
+    setFinished(true);
+    setResult(null);
+  }, []);
+
   const currentQuestion = questions[currentIndex] || null;
-  const isFinished = currentIndex >= questions.length - 1 && result !== null;
+  const isLast = questions.length > 0 && currentIndex === questions.length - 1;
+  const isFinished = finished;
 
   return {
     questions,
@@ -82,9 +96,11 @@ export function useQuiz(kpId: string | null) {
     result,
     loading,
     error,
+    isLast,
     isFinished,
     loadQuestions,
     submitAnswer,
     nextQuestion,
+    finishQuiz,
   };
 }
