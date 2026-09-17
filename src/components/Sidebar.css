@@ -7,10 +7,11 @@
   overflow: hidden;
   user-select: none;
   color: var(--color-sidebar-text);
-  background: var(--color-sidebar);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  border-right: 1px solid var(--color-border);
+  background: var(--color-sidebar-solid);
+  /* Soft carved edge instead of a border line */
+  box-shadow:
+    inset -10px 0 14px -12px var(--nm-shadow-dark),
+    inset 10px 0 14px -12px var(--nm-shadow-light);
 }
 
 .sidebar-brand {
@@ -21,43 +22,49 @@
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   color: var(--color-text-primary);
 }
 
-.sidebar-brand-sub {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: var(--color-sidebar-muted);
-  letter-spacing: -0.01em;
-}
-
-.sidebar-chat-btn {
+.sidebar-chat-btn,
+.sidebar-review-btn {
   display: flex;
   align-items: center;
   gap: 10px;
   width: calc(100% - 20px);
   margin: 4px 10px 8px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-sidebar-text);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
   font-size: 14px;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: background var(--duration) var(--ease-apple), color var(--duration) var(--ease-apple);
+  box-shadow: var(--nm-e1);
+  transition: var(--nm-transition);
 }
 
-.sidebar-chat-btn:hover {
-  background: var(--color-sidebar-hover);
+.sidebar-chat-btn:hover,
+.sidebar-review-btn:hover {
+  box-shadow: var(--nm-e0);
 }
 
-.sidebar-chat-btn.active {
-  background: var(--color-sidebar-active);
+.sidebar-chat-btn:active,
+.sidebar-review-btn:active {
+  box-shadow: var(--nm-i1);
+}
+
+.sidebar-chat-btn.active,
+.sidebar-review-btn.active {
   color: var(--color-accent);
   font-weight: 600;
+  box-shadow: var(--nm-i1);
+}
+
+.sidebar-review-btn {
+  justify-content: space-between;
 }
 
 .sidebar-tabs {
@@ -65,21 +72,23 @@
   gap: 4px;
   margin: 0 12px;
   padding: 4px;
-  border-radius: var(--radius-sm);
-  background: var(--color-fill);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  box-shadow: var(--nm-i1);
 }
 
 .sidebar-tab {
   flex: 1;
   padding: 7px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-sidebar-muted);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--duration) var(--ease-apple), color var(--duration) var(--ease-apple);
+  box-shadow: none;
+  transition: var(--nm-transition);
 }
 
 .sidebar-tab:hover {
@@ -87,38 +96,10 @@
 }
 
 .sidebar-tab.active {
-  background: var(--color-surface);
+  background: var(--color-bg);
   color: var(--color-text-primary);
-  box-shadow: var(--shadow-sm);
-}
-
-.sidebar-review-btn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: calc(100% - 20px);
-  margin: 4px 10px 8px;
-  padding: 10px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-sidebar-text);
-  font-size: 14px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--duration) var(--ease-apple), color var(--duration) var(--ease-apple);
-}
-
-.sidebar-review-btn:hover {
-  background: var(--color-sidebar-hover);
-}
-
-.sidebar-review-btn.active {
-  background: var(--color-sidebar-active);
-  color: var(--color-accent);
   font-weight: 600;
+  box-shadow: var(--nm-e0);
 }
 
 .review-badge {
@@ -130,7 +111,7 @@
   padding: 0 5px;
   border-radius: var(--radius-pill);
   background: var(--color-danger);
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -148,50 +129,53 @@
   align-items: center;
   gap: 8px;
   padding: 12px 14px 16px;
-  border-top: 1px solid var(--color-border);
+  box-shadow:
+    inset 0 10px 14px -14px var(--nm-shadow-dark),
+    inset 0 -10px 14px -14px var(--nm-shadow-light);
 }
 
 .sidebar-settings-btn {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 8px;
-  background: transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
   color: var(--color-sidebar-muted);
   font-size: 16px;
   cursor: pointer;
-  transition: background var(--duration) var(--ease-apple), color var(--duration) var(--ease-apple);
+  box-shadow: var(--nm-e0);
+  transition: var(--nm-transition);
 }
 
 .sidebar-settings-btn:hover {
-  background: var(--color-sidebar-hover);
   color: var(--color-text-primary);
+  box-shadow: var(--nm-e-min);
 }
 
+.sidebar-settings-btn:active,
 .sidebar-settings-btn.active {
-  background: var(--color-sidebar-active);
   color: var(--color-accent);
+  box-shadow: var(--nm-i1);
 }
 
 .sidebar-mode-badge {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
+  height: 24px;
+  padding: 0 10px;
   border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.02em;
   color: var(--color-accent);
-  background: var(--color-accent-soft);
+  background: var(--color-bg);
+  box-shadow: var(--nm-i0);
 }
 
 .sidebar-mode-badge.desktop {
   color: var(--color-success);
-  background: rgba(52, 199, 89, 0.14);
 }
 
 .sidebar-version {

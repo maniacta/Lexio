@@ -30,7 +30,7 @@ export default function SettingsView() {
   useEffect(() => { loadSettings(); }, []);
 
   if (loading) return <div className="settings-loading">加载中...</div>;
-  if (error) return <div className="settings-error">{error}<button onClick={loadSettings}>重试</button></div>;
+  if (error) return <div className="settings-error">{error}<button className="btn-secondary" onClick={loadSettings}>重试</button></div>;
   if (!settings) return null;
 
   return (

@@ -1,35 +1,38 @@
 .source-list,
 .kp-list {
-  padding: 10px 8px 16px;
+  padding: 10px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .source-list h3,
 .kp-list h3 {
-  margin: 0 0 8px;
-  padding: 4px 10px;
-  font-size: 11px;
+  margin: 0 0 2px;
+  padding: 4px 6px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--color-sidebar-muted);
 }
 
 .source-item,
 .kp-item {
-  padding: 10px 12px;
-  margin-bottom: 2px;
-  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
   cursor: pointer;
-  transition: background var(--duration) var(--ease-apple);
+  box-shadow: var(--nm-e0);
+  transition: var(--nm-transition);
 }
 
 .source-item:hover,
 .kp-item:hover {
-  background: var(--color-sidebar-hover);
+  box-shadow: var(--nm-e-min);
 }
 
 .kp-item.selected {
-  background: var(--color-sidebar-active);
+  box-shadow: var(--nm-i1);
 }
 
 .source-item-header,
@@ -37,9 +40,9 @@
   display: block;
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: -0.01em;
   color: var(--color-text-primary);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  overflow-wrap: anywhere;
 }
 
 .kp-item.selected .kp-title {
@@ -47,7 +50,7 @@
 }
 
 .source-item-actions {
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .source-item-actions button {
@@ -55,12 +58,13 @@
   border: none;
   cursor: pointer;
   font-size: 13px;
-  padding: 2px;
-  opacity: 0.55;
+  padding: 2px 4px;
+  color: var(--color-text-muted);
+  transition: var(--nm-transition);
 }
 
 .source-item-actions button:hover {
-  opacity: 1;
+  color: var(--color-text-primary);
 }
 
 .kp-summary {
@@ -69,7 +73,7 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--color-sidebar-muted);
 }
 

@@ -3,51 +3,57 @@
   align-items: center;
   gap: 10px;
   padding: 16px 28px 22px;
-  background: linear-gradient(to top, var(--color-bg) 55%, transparent);
+  background: transparent;
 }
 
 .chat-input input {
   flex: 1;
-  height: 44px;
+  height: 46px;
   padding: 0 18px;
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: var(--radius-pill);
-  background: var(--color-surface);
+  background: var(--color-bg);
   color: var(--color-text-primary);
   font-size: 15px;
   outline: none;
-  box-shadow: var(--shadow-sm);
-  transition:
-    border-color var(--duration) var(--ease-apple),
-    box-shadow var(--duration) var(--ease-apple);
+  box-shadow: var(--nm-i2);
+  transition: var(--nm-transition);
 }
 
 .chat-input input::placeholder {
   color: var(--color-text-muted);
 }
 
+/* Focus opens the channel: recess gets shallower, never deeper. */
 .chat-input input:focus {
-  border-color: rgba(0, 113, 227, 0.45);
-  box-shadow: 0 0 0 4px var(--color-accent-soft), var(--shadow-sm);
+  box-shadow: var(--nm-i0);
 }
 
 .chat-input button {
-  height: 44px;
-  padding: 0 20px;
+  height: 46px;
+  padding: 0 22px;
   border: none;
   border-radius: var(--radius-pill);
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--nm-e1);
+  transition: var(--nm-transition);
 }
 
 .chat-input button:hover:not(:disabled) {
   background: var(--color-accent-hover);
+  box-shadow: var(--nm-e0);
+}
+
+.chat-input button:active:not(:disabled) {
+  box-shadow: var(--nm-i-accent);
 }
 
 .chat-input button:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: var(--nm-e-min);
 }

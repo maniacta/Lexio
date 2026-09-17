@@ -28,6 +28,10 @@ dist-ssr
 *.db-shm
 *.db-wal
 
+# Local encryption master key (never commit)
+.lexio-master.key
+*.lexio-master.key
+
 # OpenCode internal
 .omo/
 .worktrees/

@@ -25,9 +25,9 @@
 
 .review-empty h3 {
   margin: 0 0 8px;
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   color: var(--color-text-primary);
 }
 
@@ -40,23 +40,32 @@
 
 .review-list-header h2 {
   margin: 0;
-  font-size: 34px;
+  font-size: 30px;
   font-weight: 700;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.02em;
   color: var(--color-text-primary);
 }
 
 .btn-link {
-  background: none;
+  height: 32px;
+  padding: 0 14px;
   border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
   color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
+  box-shadow: var(--nm-e0);
+  transition: var(--nm-transition);
 }
 
 .btn-link:hover {
-  text-decoration: underline;
+  box-shadow: var(--nm-e-min);
+}
+
+.btn-link:active {
+  box-shadow: var(--nm-i1);
 }
 
 .review-items {
@@ -70,26 +79,21 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--color-border);
+  padding: 15px 17px;
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
+  background: var(--color-bg);
   cursor: pointer;
-  transition:
-    background var(--duration) var(--ease-apple),
-    border-color var(--duration) var(--ease-apple),
-    box-shadow var(--duration) var(--ease-apple);
+  box-shadow: var(--nm-e1);
+  transition: var(--nm-transition);
 }
 
 .review-item-card:hover {
-  background: var(--color-fill-hover);
+  box-shadow: var(--nm-e0);
 }
 
 .review-item-card.selected {
-  border-color: rgba(0, 113, 227, 0.4);
-  background: var(--color-accent-soft);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  box-shadow: var(--nm-i1);
 }
 
 .review-item-card input[type="checkbox"] {
@@ -109,7 +113,6 @@
 .review-item-title {
   font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.015em;
   color: var(--color-text-primary);
 }
 
@@ -118,14 +121,23 @@
   color: var(--color-text-secondary);
 }
 
+.btn-start-review {
+  width: 100%;
+}
+
 .review-session-header {
   margin-bottom: 16px;
 }
 
 .review-progress {
-  font-size: 14px;
-  font-weight: 500;
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg);
+  font-size: 13px;
+  font-weight: 600;
   color: var(--color-text-secondary);
+  box-shadow: var(--nm-i0);
 }
 
 .review-session-loading,
@@ -139,6 +151,12 @@
   margin-top: 16px;
 }
 
+.review-session-inline-error {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--color-danger);
+}
+
 .review-summary-header {
   text-align: center;
   margin-bottom: 28px;
@@ -146,22 +164,26 @@
 
 .review-summary-header h2 {
   margin: 0 0 8px;
-  font-size: 34px;
+  font-size: 30px;
   font-weight: 700;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.02em;
 }
 
 .review-summary-score {
-  font-size: 48px;
+  display: inline-block;
+  padding: 8px 20px;
+  border-radius: var(--radius-pill);
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: -0.04em;
   color: var(--color-accent);
+  background: var(--color-bg);
+  box-shadow: var(--nm-i0);
 }
 
 .review-summary-items {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 28px;
 }
 
@@ -169,21 +191,21 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
+  padding: 15px 17px;
+  border: none;
   border-radius: var(--radius-md);
   font-size: 15px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  box-shadow: var(--nm-e1);
 }
 
 .review-summary-item.correct {
-  background: rgba(52, 199, 89, 0.1);
-  border-color: transparent;
+  box-shadow: inset 4px 4px 8px rgba(23, 107, 71, 0.2), var(--nm-e-min);
 }
 
 .review-summary-item.incorrect {
-  background: rgba(255, 59, 48, 0.1);
-  border-color: transparent;
+  box-shadow: inset 4px 4px 8px rgba(176, 48, 36, 0.2), var(--nm-e-min);
 }
 
 .review-summary-icon {
