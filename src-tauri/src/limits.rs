@@ -84,6 +84,37 @@ pub fn check_required(field: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Temperature accepted on model create/update. Outside this, the vendor
+/// either clamps or errors, and a hostile client could otherwise store
+/// nonsense that later corrupts request bodies.
+pub const TEMPERATURE_MIN: f64 = 0.0;
+pub const TEMPERATURE_MAX: f64 = 2.0;
+
+/// Completion length. 1 is the smallest useful probe; 128k covers current
+/// vendor limits without letting a client ask for unbounded generation.
+pub const MAX_TOKENS_MIN: i32 = 1;
+pub const MAX_TOKENS_MAX: i32 = 128_000;
+
+/// Reject a temperature that is non-finite or outside [`TEMPERATURE_MIN`], [`TEMPERATURE_MAX`].
+pub fn check_temperature(value: f64) -> Result<(), String> {
+    if !value.is_finite() || value < TEMPERATURE_MIN || value > TEMPERATURE_MAX {
+        return Err(format!(
+            "温度超出范围：{value}，允许 {TEMPERATURE_MIN}–{TEMPERATURE_MAX}"
+        ));
+    }
+    Ok(())
+}
+
+/// Reject a max_tokens that is outside [`MAX_TOKENS_MIN`], [`MAX_TOKENS_MAX`].
+pub fn check_max_tokens(value: i32) -> Result<(), String> {
+    if value < MAX_TOKENS_MIN || value > MAX_TOKENS_MAX {
+        return Err(format!(
+            "max_tokens 超出范围：{value}，允许 {MAX_TOKENS_MIN}–{MAX_TOKENS_MAX}"
+        ));
+    }
+    Ok(())
+}
+
 /// Reject a collection longer than `max`.
 pub fn check_count(field: &str, len: usize, max: usize) -> Result<(), String> {
     if len > max {
@@ -507,5 +538,20 @@ mod tests {
         assert!(validate_answer("1.5").is_ok());
         assert!(validate_answer(&"a".repeat(MAX_ANSWER_CHARS)).is_ok());
         assert!(validate_answer(&"a".repeat(MAX_ANSWER_CHARS + 1)).is_err());
+    }
+
+    #[test]
+    fn validates_sampling_parameters() {
+        assert!(check_temperature(0.0).is_ok());
+        assert!(check_temperature(0.7).is_ok());
+        assert!(check_temperature(2.0).is_ok());
+        assert!(check_temperature(-0.1).is_err());
+        assert!(check_temperature(2.01).is_err());
+        assert!(check_temperature(f64::NAN).is_err());
+        assert!(check_max_tokens(1).is_ok());
+        assert!(check_max_tokens(4096).is_ok());
+        assert!(check_max_tokens(128_000).is_ok());
+        assert!(check_max_tokens(0).is_err());
+        assert!(check_max_tokens(128_001).is_err());
     }
 }

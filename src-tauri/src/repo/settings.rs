@@ -310,16 +310,11 @@ fn list_models_by_provider(db: &Database, provider_id: &str) -> Result<Vec<Provi
     Ok(models)
 }
 
-pub fn create_model(db: &Database, provider_id: &str, req: &CreateModelRequest) -> Result<ProviderModel, String> {
-    let provider = get_provider(db, provider_id)?.ok_or_else(|| "厂商不存在".to_string())?;
-    let kind = crate::ai::ProviderKind::parse(&provider.api_format)
-        .ok_or_else(|| format!("未知厂商类型: {}", provider.api_format))?;
-    let model_name = req.model_name.trim();
-    if model_name.is_empty() {
-        return Err("请选择模型".into());
-    }
-    let preset = kind
-        .default_models()
+fn catalog_preset(
+    kind: crate::ai::ProviderKind,
+    model_name: &str,
+) -> Result<&'static crate::ai::provider::ModelPreset, String> {
+    kind.default_models()
         .iter()
         .find(|m| m.model_name == model_name)
         .ok_or_else(|| {
@@ -333,7 +328,18 @@ pub fn create_model(db: &Database, provider_id: &str, req: &CreateModelRequest) 
                     .collect::<Vec<_>>()
                     .join("、")
             )
-        })?;
+        })
+}
+
+pub fn create_model(db: &Database, provider_id: &str, req: &CreateModelRequest) -> Result<ProviderModel, String> {
+    let provider = get_provider(db, provider_id)?.ok_or_else(|| "厂商不存在".to_string())?;
+    let kind = crate::ai::ProviderKind::parse(&provider.api_format)
+        .ok_or_else(|| format!("未知厂商类型: {}", provider.api_format))?;
+    let model_name = req.model_name.trim();
+    if model_name.is_empty() {
+        return Err("请选择模型".into());
+    }
+    let preset = catalog_preset(kind, model_name)?;
     // Temperature / max_tokens are no longer user-configurable; keep DB columns for
     // schema compat and seed from the vendor catalog defaults.
     let temp = preset.temperature;
@@ -402,16 +408,53 @@ pub fn set_model_default(db: &Database, provider_id: &str, model_id: &str) -> Re
 }
 
 pub fn update_model(db: &Database, provider_id: &str, model_id: &str, req: &UpdateModelRequest) -> Result<(), String> {
+    let provider = get_provider(db, provider_id)?.ok_or_else(|| "厂商不存在".to_string())?;
+    let kind = crate::ai::ProviderKind::parse(&provider.api_format)
+        .ok_or_else(|| format!("未知厂商类型: {}", provider.api_format))?;
+    let model_name = req.model_name.trim();
+    if model_name.is_empty() {
+        return Err("请选择模型".into());
+    }
+    let preset = catalog_preset(kind, model_name)?;
+    if let Some(t) = req.temperature {
+        crate::limits::check_temperature(t)?;
+    }
+    if let Some(n) = req.max_tokens {
+        crate::limits::check_max_tokens(n)?;
+    }
+    // Sampling is not user-configurable; store the catalog defaults for the
+    // chosen name so create and update cannot drift.
+    let temp = preset.temperature;
+    let tokens = preset.max_tokens;
+
     let conn = db.conn.lock().map_err(crate::error::internal)?;
-    let temp = req.temperature.unwrap_or(0.7);
-    let tokens = req.max_tokens.unwrap_or(4096);
+    let exists: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM provider_models WHERE id = ?1 AND provider_id = ?2",
+            rusqlite::params![model_id, provider_id],
+            |r| r.get(0),
+        )
+        .map_err(crate::error::internal)?;
+    if exists == 0 {
+        return Err("模型不存在".into());
+    }
+    let dup: i32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM provider_models WHERE provider_id = ?1 AND model_name = ?2 AND id != ?3",
+            rusqlite::params![provider_id, model_name, model_id],
+            |r| r.get(0),
+        )
+        .map_err(crate::error::internal)?;
+    if dup > 0 {
+        return Err(format!("模型「{}」已添加", model_name));
+    }
     if req.is_default == Some(true) {
         conn.execute("UPDATE provider_models SET is_default = 0 WHERE provider_id = ?1", [provider_id])
             .map_err(crate::error::internal)?;
     }
     conn.execute(
         "UPDATE provider_models SET model_name=?1, temperature=?2, max_tokens=?3 WHERE id=?4 AND provider_id=?5",
-        rusqlite::params![req.model_name, temp, tokens, model_id, provider_id],
+        rusqlite::params![model_name, temp, tokens, model_id, provider_id],
     ).map_err(crate::error::internal)?;
     if let Some(is_def) = req.is_default {
         conn.execute(
@@ -845,4 +888,103 @@ pub fn resolve_for_test(db: &Database, provider_id: &str, model_name: &str) -> R
         temperature: 0.7,
         max_tokens: 256,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use crate::models::UpdateModelRequest;
+
+    fn test_db() -> Database {
+        let db = Database::new(":memory:").expect("in-memory db");
+        db.migrate().expect("migrate");
+        init_presets(&db).expect("presets");
+        db
+    }
+
+    fn deepseek_flash(db: &Database) -> (String, String) {
+        let conn = db.conn.lock().unwrap();
+        let pid: String = conn
+            .query_row(
+                "SELECT id FROM model_providers WHERE api_format = 'deepseek'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let mid: String = conn
+            .query_row(
+                "SELECT id FROM provider_models WHERE provider_id = ?1 AND model_name = 'deepseek-v4-flash'",
+                [&pid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        (pid, mid)
+    }
+
+    fn update(name: &str, temperature: Option<f64>, max_tokens: Option<i32>) -> UpdateModelRequest {
+        UpdateModelRequest {
+            model_name: name.to_string(),
+            temperature,
+            max_tokens,
+            is_default: None,
+        }
+    }
+
+    #[test]
+    fn update_model_rejects_a_name_outside_the_catalog() {
+        let db = test_db();
+        let (pid, mid) = deepseek_flash(&db);
+        let err = update_model(&db, &pid, &mid, &update("gpt-4o", None, None)).unwrap_err();
+        assert!(err.contains("官方支持"), "got: {err}");
+    }
+
+    #[test]
+    fn update_model_rejects_out_of_range_sampling() {
+        let db = test_db();
+        let (pid, mid) = deepseek_flash(&db);
+        let hot = update_model(&db, &pid, &mid, &update("deepseek-v4-flash", Some(9.0), None))
+            .unwrap_err();
+        assert!(hot.contains("温度"), "got: {hot}");
+        let huge = update_model(
+            &db,
+            &pid,
+            &mid,
+            &update("deepseek-v4-flash", None, Some(500_000)),
+        )
+        .unwrap_err();
+        assert!(huge.contains("max_tokens"), "got: {huge}");
+    }
+
+    #[test]
+    fn update_model_stores_catalog_sampling_not_the_client_value() {
+        let db = test_db();
+        let (pid, mid) = deepseek_flash(&db);
+        update_model(
+            &db,
+            &pid,
+            &mid,
+            &update("deepseek-v4-flash", Some(0.1), Some(16)),
+        )
+        .unwrap();
+        let conn = db.conn.lock().unwrap();
+        let (temp, tokens): (f64, i32) = conn
+            .query_row(
+                "SELECT temperature, max_tokens FROM provider_models WHERE id = ?1",
+                [&mid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!((temp - 0.7).abs() < f64::EPSILON, "catalog temp, got {temp}");
+        assert_eq!(tokens, 4096, "catalog max_tokens");
+    }
+
+    #[test]
+    fn update_model_rejects_a_missing_row() {
+        let db = test_db();
+        let (pid, _) = deepseek_flash(&db);
+        let err = update_model(&db, &pid, "no-such-model", &update("deepseek-v4-flash", None, None))
+            .unwrap_err();
+        assert_eq!(err, "模型不存在");
+    }
 }
