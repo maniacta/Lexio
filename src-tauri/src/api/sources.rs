@@ -15,6 +15,8 @@ pub async fn create_source(
     State(state): State<&'static AppState>,
     Json(req): Json<CreateSourceRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    crate::limits::validate_source(&req).map_err(crate::api::bad_request)?;
+
     let source = blocking::run(move || repo::source::create_source(state.db, &req)).await?;
     Ok((StatusCode::CREATED, Json(serde_json::to_value(&source).unwrap())))
 }

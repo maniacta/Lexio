@@ -20,6 +20,7 @@ pub async fn submit_answer(
     State(state): State<&'static AppState>,
     Json(req): Json<SubmitQuizAnswerRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    crate::limits::validate_answer(&req.user_answer).map_err(crate::api::bad_request)?;
     let start = std::time::Instant::now();
     let result = blocking::run(move || {
         let questions = repo::quiz::get_questions_by_ids(state.db, &[req.question_id.clone()])?;

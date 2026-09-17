@@ -9,6 +9,7 @@ pub async fn create_plan(
     State(state): State<&'static AppState>,
     Json(req): Json<CreateLearningPlanRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    crate::limits::validate_plan(&req).map_err(crate::api::bad_request)?;
     let plan = blocking::run(move || repo::learning::create_plan(state.db, &req)).await?;
     Ok((StatusCode::CREATED, Json(serde_json::to_value(&plan).unwrap())))
 }

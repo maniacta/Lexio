@@ -8,6 +8,7 @@ pub mod ai;
 pub mod crypto;
 pub mod error;
 pub mod key_store;
+pub mod limits;
 pub mod tracing_layer;
 
 use std::net::SocketAddr;

@@ -15,6 +15,8 @@ pub async fn create_kp(
     State(state): State<&'static AppState>,
     Json(req): Json<CreateKnowledgePointRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    crate::limits::validate_kp(&req).map_err(crate::api::bad_request)?;
+
     let audit_title = req.title.clone();
     let start = std::time::Instant::now();
     let kp = blocking::run(move || repo::knowledge::create_kp(state.db, &req)).await?;

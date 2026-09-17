@@ -229,11 +229,9 @@ pub struct ChatRequest {
     pub context: Option<ChatContext>,
 }
 
-#[derive(serde::Deserialize)]
-pub struct ChatMessageItem {
-    pub role: String,
-    pub content: String,
-}
+/// One turn of chat history. Shares the single definition in [`crate::limits`]
+/// so the validator and the wire format cannot drift apart.
+pub type ChatMessageItem = crate::limits::ChatTurn;
 
 #[derive(serde::Deserialize)]
 pub struct ChatContext {
@@ -261,7 +259,18 @@ pub async fn chat(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
     use crate::repo::{knowledge, learning};
     let start = std::time::Instant::now();
+
+    // Validate before touching the database or the model: a request that is
+    // too large or carries a forged role must cost nothing to reject. These
+    // are hand-written messages, so they reach the client as a 400 verbatim.
+    crate::limits::validate_chat_turns(&req.messages)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    // Only the newest turns that fit the prompt budget are sent, so a long
+    // conversation keeps working instead of failing or growing cost without
+    // bound. The request itself is legal; this is trimming, not rejection.
+    let history = crate::limits::trim_history(&req.messages);
     let audit_msg_count = req.messages.len();
+    let audit_trimmed = history.len() != req.messages.len();
 
     let llm_config = match blocking::run(move || repo::settings::resolve_llm_config(state.db, "chat")).await
     {
@@ -313,8 +322,9 @@ pub async fn chat(
         "\naction type 只能是 navigate_learning / start_quiz / view_source / start_research，不需要 action 时 actions 为空数组 []",
     ));
 
-    // Build user prompt from message history
-    let user_prompt = req.messages.iter()
+    // Build user prompt from the trimmed history (oldest first).
+    let user_prompt = history
+        .iter()
         .map(|m| format!("{}: {}", m.role, m.content))
         .collect::<Vec<_>>()
         .join("\n");
@@ -338,7 +348,7 @@ pub async fn chat(
         action = "chat",
         status_code = 200,
         duration_ms = duration_ms,
-        params_summary = %serde_json::json!({"messages": audit_msg_count}),
+        params_summary = %serde_json::json!({"messages": audit_msg_count, "prompt_turns": history.len(), "trimmed": audit_trimmed}),
         result_summary = %serde_json::json!({"actions": chat_resp.actions.len()}),
     );
 

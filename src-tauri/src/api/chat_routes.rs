@@ -39,6 +39,7 @@ pub async fn create_session(
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
     let title = req.title.unwrap_or_else(|| "新对话".to_string());
+    crate::limits::validate_session_title(&title).map_err(crate::api::bad_request)?;
     let start = std::time::Instant::now();
     let session = blocking::run(move || repo::chat::create_session(state.db, &title)).await?;
     let duration_ms = start.elapsed().as_millis() as i64;
@@ -66,6 +67,21 @@ pub async fn append_message(
     State(state): State<&'static AppState>,
     Json(req): Json<AppendMessageRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    // The role is constrained by the DB's CHECK, but validating here turns a
+    // confusing 500 from a failed INSERT into a clear 400.
+    if !matches!(req.role.as_str(), "user" | "assistant") {
+        return Err(crate::api::bad_request(format!(
+            "消息角色无效：{}（仅支持 user / assistant）",
+            req.role
+        )));
+    }
+    crate::limits::validate_message(
+        &req.content,
+        req.actions.as_deref(),
+        req.context.as_deref(),
+    )
+    .map_err(crate::api::bad_request)?;
+
     let audit_role = req.role.clone();
     let start = std::time::Instant::now();
     let message = blocking::run(move || {
