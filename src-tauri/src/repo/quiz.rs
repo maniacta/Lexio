@@ -56,6 +56,21 @@ pub fn record_attempt(db: &Database, req: &SubmitQuizAnswerRequest, is_correct: 
     Ok(attempt)
 }
 
+pub fn latest_attempt(db: &Database, question_id: &str) -> Result<Option<QuizAttempt>, String> {
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, question_id, user_answer, is_correct, attempted_at
+             FROM quiz_attempts WHERE question_id = ?1
+             ORDER BY attempted_at DESC LIMIT 1",
+        )
+        .map_err(crate::error::internal)?;
+    let rows = stmt
+        .query_map([question_id], |row| attempt_from_row(row))
+        .map_err(crate::error::internal)?;
+    crate::repo::one(rows)
+}
+
 pub fn get_attempts_by_kp(db: &Database, kp_id: &str) -> Result<Vec<QuizAttempt>, String> {
     let conn = db.conn.lock().map_err(crate::error::internal)?;
     let mut stmt = conn

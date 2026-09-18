@@ -100,14 +100,12 @@ export default function ReviewSession({ kpIds, onComplete }: Props) {
     try {
       const res = await api.quiz.submit(question.id, answer, ac.signal);
       if (ac.signal.aborted) return;
-      const mastery = await api.ai.updateMastery(question.kp_id, res.is_correct, ac.signal);
-      if (ac.signal.aborted) return;
       notifyDataChanged();
       setResult({
         user_answer: answer,
         is_correct: res.is_correct,
         explanation: res.explanation,
-        next_review_at: mastery.next_review_at,
+        next_review_at: res.next_review_at ?? "",
       });
     } catch (e: unknown) {
       if (isAbortError(e)) return;

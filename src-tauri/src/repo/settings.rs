@@ -50,28 +50,54 @@ pub fn set_settings(db: &Database, entries: &[(String, String)]) -> Result<(), S
 // ── Providers ──
 
 pub fn list_providers(db: &Database) -> Result<Vec<ProviderWithModels>, String> {
-    let providers: Vec<ModelProvider> = {
-        let conn = db.conn.lock().map_err(crate::error::internal)?;
-        let mut stmt = conn.prepare(
-            "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at FROM model_providers ORDER BY created_at ASC"
-        ).map_err(crate::error::internal)?;
-        let result = crate::repo::rows(
-        stmt.query_map([], |row| {
-                Ok(ModelProvider {
-                    id: row.get(0)?, name: row.get(1)?, base_url: row.get(2)?,
-                    api_key: row.get(3)?, api_format: row.get(4)?,
-                    is_preset: row.get::<_, i32>(5)? != 0,
-                    is_default: row.get::<_, i32>(6)? != 0,
-                    created_at: row.get(7)?,
-                })
-            }),
-        )?;
-        result
-    };
+    let conn = db.conn.lock().map_err(crate::error::internal)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, base_url, api_key, api_format, is_preset, is_default, created_at FROM model_providers ORDER BY created_at ASC"
+    ).map_err(crate::error::internal)?;
+    let providers = crate::repo::rows(stmt.query_map([], |row| {
+        Ok(ModelProvider {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            base_url: row.get(2)?,
+            api_key: row.get(3)?,
+            api_format: row.get(4)?,
+            is_preset: row.get::<_, i32>(5)? != 0,
+            is_default: row.get::<_, i32>(6)? != 0,
+            created_at: row.get(7)?,
+        })
+    }))?;
+    drop(stmt);
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, provider_id, model_name, temperature, max_tokens, is_default
+             FROM provider_models ORDER BY provider_id, model_name ASC",
+        )
+        .map_err(crate::error::internal)?;
+    let all_models = crate::repo::rows(stmt.query_map([], |row| {
+        Ok(ProviderModel {
+            id: row.get(0)?,
+            provider_id: row.get(1)?,
+            model_name: row.get(2)?,
+            temperature: row.get(3)?,
+            max_tokens: row.get(4)?,
+            is_default: row.get::<_, i32>(5)? != 0,
+        })
+    }))?;
+    drop(stmt);
+
+    let mut by_provider: std::collections::HashMap<String, Vec<ProviderModel>> =
+        std::collections::HashMap::new();
+    for model in all_models {
+        by_provider
+            .entry(model.provider_id.clone())
+            .or_default()
+            .push(model);
+    }
 
     let mut result = Vec::new();
     for p in providers {
-        let models = list_models_by_provider(db, &p.id)?;
+        let models = by_provider.remove(&p.id).unwrap_or_default();
         let plain = crate::crypto::decrypt_secret(&p.api_key)?;
         result.push(ProviderWithModels {
             id: p.id,
@@ -306,23 +332,6 @@ pub fn delete_provider(db: &Database, id: &str) -> Result<(), String> {
 }
 
 // ── Provider Models ──
-
-fn list_models_by_provider(db: &Database, provider_id: &str) -> Result<Vec<ProviderModel>, String> {
-    let conn = db.conn.lock().map_err(crate::error::internal)?;
-    let mut stmt = conn.prepare(
-        "SELECT id, provider_id, model_name, temperature, max_tokens, is_default FROM provider_models WHERE provider_id = ?1 ORDER BY model_name ASC"
-    ).map_err(crate::error::internal)?;
-    let models = crate::repo::rows(
-        stmt.query_map([provider_id], |row| {
-            Ok(ProviderModel {
-                id: row.get(0)?, provider_id: row.get(1)?, model_name: row.get(2)?,
-                temperature: row.get(3)?, max_tokens: row.get(4)?,
-                is_default: row.get::<_, i32>(5)? != 0,
-            })
-        }),
-    )?;
-    Ok(models)
-}
 
 fn catalog_preset(
     kind: crate::ai::ProviderKind,
@@ -1027,5 +1036,20 @@ mod tests {
             !crate::error::is_internal(&err),
             "missing model must be a user-facing 404, not a 500"
         );
+    }
+
+    #[test]
+    fn list_providers_attaches_every_model_without_a_per_vendor_query() {
+        let db = test_db();
+        let list = list_providers(&db).unwrap();
+        assert!(list.len() >= 2, "presets seed more than one vendor");
+        let attached: usize = list.iter().map(|p| p.models.len()).sum();
+        let stored: i32 = {
+            let conn = db.conn.lock().unwrap();
+            conn.query_row("SELECT COUNT(*) FROM provider_models", [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(attached, stored as usize);
+        assert!(list.iter().all(|p| !p.models.is_empty()));
     }
 }

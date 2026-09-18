@@ -59,6 +59,7 @@ export interface QuizResult {
   is_correct: boolean;
   explanation: string;
   correct_answer?: string;
+  next_review_at?: string;
 }
 
 export interface LearningPlan {

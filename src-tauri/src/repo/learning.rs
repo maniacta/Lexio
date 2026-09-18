@@ -54,6 +54,60 @@ pub fn upsert_mastery(db: &Database, record: &MasteryRecord) -> Result<(), Strin
     Ok(())
 }
 
+/// Apply one SM-2 step from a *server-scored* answer.
+///
+/// Advances at most once per local calendar day per KP. A quiz session answers
+/// several questions in a row; without this guard a single session would count
+/// as several reviews and inflate the interval (0→1→6→16 days).
+pub fn apply_mastery(
+    db: &Database,
+    kp_id: &str,
+    is_correct: bool,
+) -> Result<(MasteryRecord, bool), String> {
+    let existing = get_mastery_by_kp(db, kp_id)?;
+    if let Some(rec) = &existing {
+        if !crate::learning::sm2::should_advance_sm2(rec.last_reviewed_at.as_deref(), chrono::Utc::now())
+        {
+            return Ok((rec.clone(), false));
+        }
+    }
+
+    let record_id = existing
+        .as_ref()
+        .map(|r| r.id.clone())
+        .unwrap_or_else(new_id);
+
+    let input = match existing {
+        Some(rec) => crate::learning::sm2::Sm2Input {
+            ease_factor: rec.ease_factor,
+            interval_days: rec.interval_days,
+            repetitions: rec.repetitions,
+            is_correct,
+            response_quality: if is_correct { 4 } else { 1 },
+        },
+        None => crate::learning::sm2::Sm2Input {
+            ease_factor: 2.5,
+            interval_days: 0,
+            repetitions: 0,
+            is_correct,
+            response_quality: if is_correct { 4 } else { 1 },
+        },
+    };
+
+    let output = crate::learning::sm2::calculate(input);
+    let record = MasteryRecord {
+        id: record_id,
+        kp_id: kp_id.to_string(),
+        ease_factor: output.ease_factor,
+        interval_days: output.interval_days,
+        repetitions: output.repetitions,
+        next_review_at: output.next_review_at,
+        last_reviewed_at: Some(chrono::Utc::now().to_rfc3339()),
+    };
+    upsert_mastery(db, &record)?;
+    Ok((record, true))
+}
+
 pub fn get_due_reviews(db: &Database) -> Result<Vec<MasteryRecord>, String> {
     let conn = db.conn.lock().map_err(crate::error::internal)?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -190,6 +244,23 @@ mod tests {
         .unwrap();
         assert_eq!(counts(&db), (1, 1, 1));
         assert_eq!(first.sources[0].id, second.sources[0].id);
+    }
+
+    #[test]
+    fn apply_mastery_advances_once_per_local_day() {
+        let db = test_db();
+        let point = crate::repo::knowledge::create_kp(&db, &kp("m")).unwrap();
+        let (first, advanced) = apply_mastery(&db, &point.id, true).unwrap();
+        assert!(advanced);
+        assert_eq!(first.repetitions, 1);
+        assert_eq!(first.interval_days, 1);
+        let (second, again) = apply_mastery(&db, &point.id, true).unwrap();
+        assert!(!again);
+        assert_eq!(second.repetitions, 1);
+        assert_eq!(second.interval_days, 1);
+        let (fail, fail_adv) = apply_mastery(&db, &point.id, false).unwrap();
+        assert!(!fail_adv);
+        assert_eq!(fail.repetitions, 1);
     }
 }
 

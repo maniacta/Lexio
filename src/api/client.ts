@@ -183,10 +183,10 @@ export const api = {
         body: JSON.stringify({ kp_id: kpId, count }),
         signal,
       }),
-    updateMastery: (kpId: string, isCorrect: boolean, signal?: AbortSignal) =>
+    updateMastery: (kpId: string, questionId: string, signal?: AbortSignal) =>
       request<MasteryRecord>("/ai/update-mastery", {
         method: "POST",
-        body: JSON.stringify({ kp_id: kpId, is_correct: isCorrect }),
+        body: JSON.stringify({ kp_id: kpId, question_id: questionId }),
         signal,
       }),
     chat: (data: ChatRequest, signal?: AbortSignal) =>

@@ -64,7 +64,6 @@ export function useQuiz(kpId: string | null) {
       const res = await api.quiz.submit(q.id, answer, ac.signal);
       if (ac.signal.aborted) return;
       setResult(res);
-      await api.ai.updateMastery(q.kp_id, res.is_correct, ac.signal);
       if (!ac.signal.aborted) notifyDataChanged();
     } catch (err) {
       if (isAbortError(err)) return;

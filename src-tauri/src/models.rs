@@ -149,6 +149,8 @@ pub struct QuizResult {
     pub explanation: String,
     /// Revealed only after submit.
     pub correct_answer: String,
+    /// SM-2 next review after this scored attempt (unchanged if the local-day gate held).
+    pub next_review_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

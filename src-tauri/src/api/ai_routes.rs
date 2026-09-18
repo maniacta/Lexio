@@ -143,11 +143,12 @@ pub async fn generate_quiz(
     Ok((StatusCode::CREATED, Json(serde_json::to_value(&public).unwrap())))
 }
 
-/// Update mastery record after quiz attempt
+/// Update mastery from a *scored* quiz attempt. The client cannot pick
+/// `is_correct`; that bit is read from the latest `quiz_attempts` row.
 #[derive(serde::Deserialize)]
 pub struct UpdateMasteryRequest {
     pub kp_id: String,
-    pub is_correct: bool,
+    pub question_id: String,
 }
 
 pub async fn update_mastery(
@@ -156,56 +157,27 @@ pub async fn update_mastery(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let start = std::time::Instant::now();
     let audit_kp_id = req.kp_id.clone();
-    let audit_is_correct = req.is_correct;
-    let (record, advanced) = blocking::run(move || {
-        let existing = repo::learning::get_mastery_by_kp(state.db, &req.kp_id)?;
-
-        // SM-2 advances at most once per local calendar day per KP. A quiz
-        // session answers several questions in a row and each answer calls
-        // update_mastery; without this guard a single session would count as
-        // several reviews and inflate the interval (0->1->6->16 days).
-        if let Some(rec) = &existing {
-            if !should_advance_sm2(rec.last_reviewed_at.as_deref(), chrono::Utc::now()) {
-                return Ok((rec.clone(), false));
-            }
+    let audit_question = req.question_id.clone();
+    let (record, advanced) = blocking::run_user(move || {
+        let questions = repo::quiz::get_questions_by_ids(state.db, &[req.question_id.clone()])?;
+        let question = questions
+            .first()
+            .ok_or_else(|| "Question not found".to_string())?;
+        if question.kp_id != req.kp_id {
+            return Err("Question not found".into());
         }
-
-        let record_id = existing
-            .as_ref()
-            .map(|r| r.id.clone())
-            .unwrap_or_else(crate::models::new_id);
-
-        let input = match existing {
-            Some(rec) => crate::learning::sm2::Sm2Input {
-                ease_factor: rec.ease_factor,
-                interval_days: rec.interval_days,
-                repetitions: rec.repetitions,
-                is_correct: req.is_correct,
-                response_quality: if req.is_correct { 4 } else { 1 },
-            },
-            None => crate::learning::sm2::Sm2Input {
-                ease_factor: 2.5,
-                interval_days: 0,
-                repetitions: 0,
-                is_correct: req.is_correct,
-                response_quality: if req.is_correct { 4 } else { 1 },
-            },
-        };
-
-        let output = crate::learning::sm2::calculate(input);
-        let record = crate::models::MasteryRecord {
-            id: record_id,
-            kp_id: req.kp_id,
-            ease_factor: output.ease_factor,
-            interval_days: output.interval_days,
-            repetitions: output.repetitions,
-            next_review_at: output.next_review_at,
-            last_reviewed_at: Some(chrono::Utc::now().to_rfc3339()),
-        };
-        repo::learning::upsert_mastery(state.db, &record)?;
-        Ok((record, true))
+        let attempt = repo::quiz::latest_attempt(state.db, &req.question_id)?
+            .ok_or_else(|| "尚未作答".to_string())?;
+        repo::learning::apply_mastery(state.db, &req.kp_id, attempt.is_correct)
     })
-    .await?;
+    .await
+    .map_err(|(code, e)| {
+        if e.contains("not found") {
+            (StatusCode::NOT_FOUND, e)
+        } else {
+            (code, e)
+        }
+    })?;
 
     let duration_ms = start.elapsed().as_millis() as i64;
     tracing::info!(
@@ -215,7 +187,7 @@ pub async fn update_mastery(
         action = "update_mastery",
         status_code = 200,
         duration_ms = duration_ms,
-        params_summary = %serde_json::json!({"kp_id": audit_kp_id, "is_correct": audit_is_correct, "advanced": advanced}),
+        params_summary = %serde_json::json!({"kp_id": audit_kp_id, "question_id": audit_question, "advanced": advanced}),
     );
 
     Ok(Json(serde_json::to_value(&record).unwrap()))
@@ -353,96 +325,4 @@ pub async fn chat(
     );
 
     Ok((StatusCode::OK, Json(serde_json::to_value(&chat_resp).unwrap())))
-}
-
-/// SM-2 advances at most once per local calendar day per KP.
-///
-/// The day is the machine's local calendar, not UTC. A UTC+8 user reviewing at
-/// 07:00 and 09:00 local would otherwise land on two UTC dates (23:00Z / 01:00Z)
-/// and get two SM-2 steps in one morning; the reverse, two reviews that straddle
-/// local midnight but stay on the same UTC date, would fail to advance at all.
-fn should_advance_sm2(
-    last_reviewed_at: Option<&str>,
-    now: chrono::DateTime<chrono::Utc>,
-) -> bool {
-    should_advance_sm2_on(last_reviewed_at, now, &chrono::Local)
-}
-
-fn should_advance_sm2_on<Tz: chrono::TimeZone>(
-    last_reviewed_at: Option<&str>,
-    now: chrono::DateTime<chrono::Utc>,
-    tz: &Tz,
-) -> bool {
-    let Some(last) = last_reviewed_at.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-    else {
-        return true;
-    };
-    last.with_timezone(tz).date_naive() != now.with_timezone(tz).date_naive()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn utc8() -> chrono::FixedOffset {
-        chrono::FixedOffset::east_opt(8 * 3600).expect("UTC+8")
-    }
-
-    fn utc_at(rfc3339: &str) -> chrono::DateTime<chrono::Utc> {
-        chrono::DateTime::parse_from_rfc3339(rfc3339)
-            .unwrap()
-            .with_timezone(&chrono::Utc)
-    }
-
-    #[test]
-    fn sm2_advances_when_no_previous_review() {
-        assert!(should_advance_sm2(None, chrono::Utc::now()));
-    }
-
-    #[test]
-    fn sm2_does_not_advance_twice_same_day() {
-        let now = chrono::Utc::now();
-        let last = now.to_rfc3339();
-        assert!(!should_advance_sm2(Some(&last), now));
-    }
-
-    #[test]
-    fn sm2_advances_next_day() {
-        let now = chrono::Utc::now();
-        let yesterday = (now - chrono::Duration::days(1)).to_rfc3339();
-        assert!(should_advance_sm2(Some(&yesterday), now));
-    }
-
-    #[test]
-    fn sm2_does_not_advance_twice_on_the_same_local_day() {
-        // UTC+8: local 07:00 and 09:00 on 2026-09-18 are 23:00Z / 01:00Z.
-        let last = "2026-09-17T23:00:00Z";
-        let now = utc_at("2026-09-18T01:00:00Z");
-        assert!(
-            !should_advance_sm2_on(Some(last), now, &utc8()),
-            "two morning reviews on the same local date must share one SM-2 step"
-        );
-        // The UTC-day comparison is what used to fire here.
-        assert_ne!(
-            utc_at(last).date_naive(),
-            now.date_naive(),
-            "the fixture really does straddle a UTC date"
-        );
-    }
-
-    #[test]
-    fn sm2_advances_when_the_local_date_changes_inside_one_utc_day() {
-        // UTC+8: local 23:00 on Sep 17 and 01:00 on Sep 18 are 15:00Z / 17:00Z.
-        let last = "2026-09-17T15:00:00Z";
-        let now = utc_at("2026-09-17T17:00:00Z");
-        assert!(
-            should_advance_sm2_on(Some(last), now, &utc8()),
-            "crossing local midnight must still advance, even on the same UTC date"
-        );
-        assert_eq!(
-            utc_at(last).date_naive(),
-            now.date_naive(),
-            "the fixture really does stay on one UTC date"
-        );
-    }
 }

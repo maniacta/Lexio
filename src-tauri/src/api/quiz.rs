@@ -29,12 +29,14 @@ pub async fn submit_answer(
             .ok_or_else(|| "Question not found".to_string())?;
         let is_correct = repo::quiz::answers_match(&req.user_answer, &question.answer);
         let _attempt = repo::quiz::record_attempt(state.db, &req, is_correct)?;
+        let (mastery, _) = repo::learning::apply_mastery(state.db, &question.kp_id, is_correct)?;
         Ok(crate::models::QuizResult {
             question: question.to_public(),
             user_answer: req.user_answer,
             is_correct,
             explanation: question.explanation.clone(),
             correct_answer: question.answer.clone(),
+            next_review_at: mastery.next_review_at,
         })
     })
     .await

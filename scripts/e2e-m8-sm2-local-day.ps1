@@ -3,7 +3,8 @@
 # let a UTC+8 user reviewing at 07:00 and 09:00 local (23:00Z / 01:00Z) take
 # two steps in one morning. The boundary itself is covered by unit tests with
 # a FixedOffset clock; this script checks the live route still applies the
-# gate: two update_mastery calls in a row must not double the interval.
+# gate: two scored submits in a row must not double the interval. Mastery
+# follows the server score, not a client is_correct flag.
 #
 # ASCII-only on purpose: Windows PowerShell 5.1 decodes BOM-less files as ANSI.
 $ErrorActionPreference = "Continue"
@@ -71,35 +72,72 @@ $kp = $null
 if ($res.body -match '"id"\s*:\s*"([^"]+)"') { $kp = $Matches[1] }
 Show "knowledge point created" (($res.code -eq 201) -and $kp) ("id={0}" -f $kp)
 
-function Mastery($correct) {
-  $f = Text-File ('{"kp_id":"' + $kp + '","is_correct":' + $correct + '}')
-  $r = Invoke-Curl "$base/ai/update-mastery" "POST" $f
+$db = Join-Path $work "lexio.db"
+$qid = [guid]::NewGuid().ToString()
+python -c @"
+import sqlite3
+con = sqlite3.connect(r'$db')
+con.execute(
+    'INSERT INTO quiz_questions (id, kp_id, type, question, options, answer, explanation) VALUES (?,?,?,?,?,?,?)',
+    ('$qid', '$kp', 'fill_blank', 'seed', None, 'ok', 'e')
+)
+con.commit()
+con.close()
+"@
+Show "seeded a fill-blank" (Test-Path $db) $qid
+
+$f = Text-File ('{"kp_id":"' + $kp + '","is_correct":true}')
+$cheat = Invoke-Curl "$base/ai/update-mastery" "POST" $f
+Remove-Item $f -Force -ErrorAction SilentlyContinue
+Show "a client-chosen is_correct is not accepted" ($cheat.code -ge 400) ("HTTP {0} body={1}" -f $cheat.code, $cheat.body)
+
+$f = Text-File ('{"kp_id":"' + $kp + '","question_id":"' + $qid + '"}')
+$early = Invoke-Curl "$base/ai/update-mastery" "POST" $f
+Remove-Item $f -Force -ErrorAction SilentlyContinue
+Show "mastery before an attempt is 400" ($early.code -eq 400) ("HTTP {0} body={1}" -f $early.code, $early.body)
+
+function Submit($answer) {
+  $f = Text-File ('{"question_id":"' + $qid + '","user_answer":"' + $answer + '"}')
+  $r = Invoke-Curl "$base/quiz/submit" "POST" $f
   Remove-Item $f -Force -ErrorAction SilentlyContinue
   return $r
 }
 
-$first = Mastery "true"
+$first = Submit "ok"
 Show "first review is 200" ($first.code -eq 200) ("HTTP {0}" -f $first.code)
 $rep1 = 0; $int1 = 0
 if ($first.body -match '"repetitions"\s*:\s*(\d+)') { $rep1 = [int]$Matches[1] }
 if ($first.body -match '"interval_days"\s*:\s*(\d+)') { $int1 = [int]$Matches[1] }
+# submit returns next_review_at; repetitions live on the mastery record via update-mastery
+# after a real attempt, or on a follow-up GET. Parse from submit body if present,
+# otherwise call update-mastery with the scored question_id.
+if ($rep1 -eq 0) {
+  $f = Text-File ('{"kp_id":"' + $kp + '","question_id":"' + $qid + '"}')
+  $sync = Invoke-Curl "$base/ai/update-mastery" "POST" $f
+  Remove-Item $f -Force -ErrorAction SilentlyContinue
+  if ($sync.body -match '"repetitions"\s*:\s*(\d+)') { $rep1 = [int]$Matches[1] }
+  if ($sync.body -match '"interval_days"\s*:\s*(\d+)') { $int1 = [int]$Matches[1] }
+}
 Write-Host ("  first review: repetitions={0} interval_days={1}" -f $rep1, $int1)
 Show "the first review advances SM-2" (($rep1 -ge 1) -and ($int1 -ge 1)) ("rep={0} interval={1}" -f $rep1, $int1)
 
-$second = Mastery "true"
+$second = Submit "ok"
 Show "second review is 200" ($second.code -eq 200) ("HTTP {0}" -f $second.code)
+$f = Text-File ('{"kp_id":"' + $kp + '","question_id":"' + $qid + '"}')
+$secondM = Invoke-Curl "$base/ai/update-mastery" "POST" $f
+Remove-Item $f -Force -ErrorAction SilentlyContinue
 $rep2 = 0; $int2 = 0
-if ($second.body -match '"repetitions"\s*:\s*(\d+)') { $rep2 = [int]$Matches[1] }
-if ($second.body -match '"interval_days"\s*:\s*(\d+)') { $int2 = [int]$Matches[1] }
+if ($secondM.body -match '"repetitions"\s*:\s*(\d+)') { $rep2 = [int]$Matches[1] }
+if ($secondM.body -match '"interval_days"\s*:\s*(\d+)') { $int2 = [int]$Matches[1] }
 Write-Host ("  second review: repetitions={0} interval_days={1}" -f $rep2, $int2)
 Show "the same local day does not take a second SM-2 step" (($rep2 -eq $rep1) -and ($int2 -eq $int1)) ("rep {0}->{1}, interval {2}->{3}" -f $rep1, $rep2, $int1, $int2)
 
-# A wrong answer the same day must also not rewrite the record (the UTC-day
-# bug made some same-local-day fails look like a new day and still skip, or
-# the other way around). Either way the stored repetitions stay put.
-$failAns = Mastery "false"
+$failAns = Submit "nope"
+$f = Text-File ('{"kp_id":"' + $kp + '","question_id":"' + $qid + '"}')
+$failM = Invoke-Curl "$base/ai/update-mastery" "POST" $f
+Remove-Item $f -Force -ErrorAction SilentlyContinue
 $rep3 = 0
-if ($failAns.body -match '"repetitions"\s*:\s*(\d+)') { $rep3 = [int]$Matches[1] }
+if ($failM.body -match '"repetitions"\s*:\s*(\d+)') { $rep3 = [int]$Matches[1] }
 Show "a same-day fail does not clobber the first step" ($rep3 -eq $rep1) ("rep still {0}" -f $rep3)
 
 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
